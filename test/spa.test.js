@@ -88,6 +88,7 @@ test('emails automáticos: seña pendiente, horario liberado, gracias, agenda di
   env.advance(3 * 864e5); await tick(st, env);
   assert.equal(st.bookings[1].status, 'completed');
   assert.ok(!env.sent.some((m) => m.template === 'booking_thanks'));
+  env.advance(11 * 3600e3); await tick(st, env); // pasa las 20 h: sale la agenda de mañana
   assert.ok(env.sent.some((m) => m.template === 'staff_daily' && m.to === 'equipo@ejemplo.com'));
   const t = await call(st, env, 'POST', '/api/admin/emails/test', { template: 'all', to: 'yo@ejemplo.com' }, st.staff[0]);
   assert.equal(t.sent, 17);
