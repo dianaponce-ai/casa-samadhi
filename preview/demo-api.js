@@ -101,6 +101,7 @@ async function call(path, { method = 'GET', body } = {}) {
 }
 window.__CASA_API = (path, opts) => call(path, opts);
 window.__CASA_ADMIN_API = (path, opts) => call('/api/admin' + path, opts);
+window.__CASA_DEMO_RESET_LINK = () => { const m = [...st.emails].reverse().find((x) => x.template === 'password_reset'); return m ? (m.html.match(/#clave\/[A-Za-z0-9]+/) || [])[0] : null; };
 window.__CASA_RESET = () => { try { localStorage.removeItem(KEY); localStorage.removeItem(KEY + '-cliente'); sessionStorage.removeItem(KEY + '-staff'); } catch {} };
 setInterval(async () => { if (await C.tick(st, env)) save(); }, 30e3);
 C.tick(st, env).then((c) => c && save());

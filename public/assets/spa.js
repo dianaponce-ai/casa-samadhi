@@ -204,7 +204,7 @@ function openDrawer(html, { doc = false, label = 'Reservar' } = {}) {
 function closeAll() {
   $('#drawer').classList.remove('on'); $('#mnav').classList.remove('on'); $('#scrim').classList.remove('on');
   document.body.style.overflow = '';
-  if (/^#(turno|gift|pago|reservar|regalar|terminos|arrepentimiento|cuenta)/.test(location.hash)) setHash('');
+  if (/^#(turno|gift|pago|reservar|regalar|terminos|arrepentimiento|cuenta|clave|olvide)/.test(location.hash)) setHash('');
   lastFocus?.focus?.({ preventScroll: true });
 }
 function setHash(h) { try { history.replaceState(null, '', h || location.pathname + location.search); } catch {} }
@@ -434,6 +434,12 @@ function openWithdraw(done) {
 
 // ── Mi cuenta ────────────────────────────────────────────
 const acc = { mode: 'login', error: '', errors: {}, sending: false };
+async function openReset(tk) {
+  ACC = null; acc.staff = null; acc.mode = 'reset'; acc.resetToken = tk; acc.error = ''; acc.errors = {};
+  openDrawer(`${head('Contraseña nueva')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Contraseña nueva' });
+  try { acc.resetInvalid = !(await api('/api/account/reset?token=' + encodeURIComponent(tk))).valid; } catch { acc.resetInvalid = true; }
+  renderAccount();
+}
 async function openAccount(mode) {
   setHash('#cuenta');
   if (mode) acc.mode = mode;
@@ -456,7 +462,18 @@ function renderAccount() {
     body = `<p class="doc-body" style="padding-top:14px">Ingresá para ver tus turnos y gift cards, cancelar o reservar de nuevo más rápido.</p>
       <form class="bk" id="loginForm" novalidate>${field('email', 'Email', 'email', 'autocomplete="email" autofocus')}${field('password', 'Contraseña', 'password', 'autocomplete="current-password"')}
       ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Ingresar</button></form>
-      <p class="note" style="margin-top:18px">¿No tenés cuenta? <button class="link-btn" data-acc-mode="register">Creala acá</button>. ¿Te olvidaste la contraseña? Escribinos por <a href="${wa(SITE.site.whatsapp, 'Hola! Me olvidé la contraseña de mi cuenta en la web.')}" target="_blank" rel="noopener">WhatsApp</a>.</p>${demoHint()}`;
+      <p class="note" style="margin-top:18px">¿No tenés cuenta? <button class="link-btn" data-acc-mode="register">Creala acá</button>. <button class="link-btn" data-acc-mode="forgot">¿Te olvidaste la contraseña?</button></p>${demoHint()}`;
+  } else if (!ACC && acc.mode === 'forgot') {
+    body = acc.sent ? `<div class="status"><span class="pill ok">Listo</span><div class="big">Revisá tu email</div><p>Si hay una cuenta con <b>${esc(acc.sent)}</b>, te mandamos un link para elegir una contraseña nueva. Vale por 1 hora. Si no lo ves, buscalo en Spam o Promociones.</p>${window.__CASA_DEMO_RESET_LINK?.() ? `<div class="sel-sum"><span class="note">Vista previa: el email no sale a ningún correo. Abrí el link desde acá para probar el cambio de contraseña.</span><a class="btn sm" style="justify-self:start" href="${window.__CASA_DEMO_RESET_LINK()}">Abrir el link del email</a></div>` : ''}<button class="link-btn" data-acc-mode="login">Volver a ingresar</button></div>`
+      : `<p class="doc-body" style="padding-top:14px">Escribí el email de tu cuenta y te mandamos un link para elegir una contraseña nueva. Sirve también para el equipo del panel.</p>
+      <form class="bk" id="forgotForm" novalidate>${field('email', 'Email', 'email', 'autocomplete="email" autofocus')}
+      ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Mandarme el link</button></form>
+      <p class="note" style="margin-top:18px"><button class="link-btn" data-acc-mode="login">Volver a ingresar</button></p>`;
+  } else if (!ACC && acc.mode === 'reset') {
+    body = acc.resetInvalid ? `<div class="status"><span class="pill bad">Link vencido</span><div class="big">Pedí un link nuevo</div><p>El link para cambiar la contraseña venció o ya se usó.</p><button class="btn solid" data-acc-mode="forgot">Pedir otro link</button></div>`
+      : `<p class="doc-body" style="padding-top:14px">Elegí tu contraseña nueva.</p>
+      <form class="bk" id="resetForm" novalidate>${field('password', 'Contraseña nueva', 'password', 'autocomplete="new-password" autofocus')}${field('password2', 'Repetila', 'password', 'autocomplete="new-password"')}
+      ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Guardar contraseña</button></form>`;
   } else if (!ACC) {
     body = `<p class="doc-body" style="padding-top:14px">Con tu cuenta ves todos tus turnos y gift cards en un solo lugar.</p>
       <form class="bk" id="registerForm" novalidate>${field('name', 'Nombre y apellido', 'text', 'autocomplete="name" autofocus')}<div class="row2">${field('email', 'Email', 'email', 'autocomplete="email"')}${field('phone', 'Celular (WhatsApp)', 'tel', 'autocomplete="tel"')}</div>${field('password', 'Contraseña (8 o más caracteres)', 'password', 'autocomplete="new-password"')}
@@ -475,7 +492,7 @@ function renderAccount() {
         <div class="row2"><div class="fl"><label for="p_cur">Contraseña actual</label><input id="p_cur" name="current" type="password" autocomplete="current-password" placeholder="Solo si la querés cambiar"></div><div class="fl"><label for="p_new">Contraseña nueva</label><input id="p_new" name="password" type="password" autocomplete="new-password"></div></div>
         ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sm" type="submit">Guardar mis datos</button><button class="btn sm" type="button" data-logout>Salir</button></div></form>`;
   }
-  $('#drawer').innerHTML = `${head(ACC ? 'Mi cuenta' : acc.mode === 'register' ? 'Crear cuenta' : 'Ingresar')}<div class="dbody">${body}</div>`;
+  $('#drawer').innerHTML = `${head(ACC ? 'Mi cuenta' : acc.staff ? 'Panel' : { register: 'Crear cuenta', forgot: 'Recuperar contraseña', reset: 'Contraseña nueva' }[acc.mode] || 'Ingresar')}<div class="dbody">${body}</div>`;
 }
 async function accountSubmit(form) {
   const d = Object.fromEntries(new FormData(form));
@@ -486,6 +503,13 @@ async function accountSubmit(form) {
       if (r.staff) { acc.staff = r.staff; ACC = null; } else { ACC = r; acc.staff = null; toast(`Hola, ${r.customer.name.split(' ')[0]}`); }
     } else if (form.id === 'registerForm') { ACC = await api('/api/account/register', d); toast('Cuenta creada'); }
     else if (form.id === 'profileForm') { ACC = await api('/api/account/me', d, 'PATCH'); toast('Datos guardados'); }
+    else if (form.id === 'forgotForm') { await api('/api/account/forgot', d); acc.sent = d.email; }
+    else if (form.id === 'resetForm') {
+      if (d.password !== d.password2) throw Object.assign(new Error('Las contraseñas no coinciden.'), { data: { errors: { password2: 'Las contraseñas no coinciden.' } } });
+      const r = await api('/api/account/reset', { token: acc.resetToken, password: d.password });
+      setHash('#cuenta'); acc.mode = 'login';
+      if (r.staff) { acc.staff = r.staff; ACC = null; toast('Contraseña cambiada'); } else { ACC = r; toast('Contraseña cambiada'); }
+    }
   } catch (err) { acc.errors = err.data?.errors || {}; acc.error = Object.keys(acc.errors).length ? '' : err.message; }
   acc.sending = false; renderAccount();
   if (ACC) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone };
@@ -502,6 +526,8 @@ function route() {
   else if (h === 'terminos') openLegal();
   else if (h === 'arrepentimiento') openWithdraw();
   else if (h === 'cuenta') openAccount();
+  else if (h === 'olvide') openAccount('forgot');
+  else if (h.startsWith('clave/')) openReset(h.slice(6));
 }
 function bind() {
   document.addEventListener('click', async (e) => {
@@ -517,7 +543,7 @@ function bind() {
     if (t.closest('[data-legal]')) { if ($('#drawer').classList.contains('on') && (bk.step === 3 || $('#gfForm'))) { readBkForm(); readGfForm(); } return openLegal(); }
     if (t.closest('[data-withdraw]')) return openWithdraw();
     if (t.closest('[data-account]')) return openAccount();
-    const am = t.closest('[data-acc-mode]'); if (am) { acc.mode = am.dataset.accMode; acc.error = ''; acc.errors = {}; return renderAccount(); }
+    const am = t.closest('[data-acc-mode]'); if (am) { acc.mode = am.dataset.accMode; acc.error = ''; acc.errors = {}; acc.sent = ''; return renderAccount(); }
     const du = t.closest('[data-demo-user]'); if (du) { const [em, pw] = du.dataset.demoUser.split('|'); acc.mode = 'login'; renderAccount(); $('#a_email').value = em; $('#a_password').value = pw; return; }
     if (t.closest('[data-open-panel]')) { if (window.__CASA_OPEN_ADMIN) { closeAll(); window.__CASA_OPEN_ADMIN(); } else location.href = '/admin/'; return; }
     if (t.closest('[data-logout]')) { await api('/api/account/logout', {}); ACC = null; bk.form = {}; acc.mode = 'login'; toast('Cerraste sesión'); return renderAccount(); }
@@ -564,7 +590,7 @@ function bind() {
   document.addEventListener('submit', async (e) => {
     if (e.target.id === 'bkForm') { e.preventDefault(); submitBooking(); }
     if (e.target.id === 'gfForm') { e.preventDefault(); submitGift(); }
-    if (['loginForm', 'registerForm', 'profileForm'].includes(e.target.id)) { e.preventDefault(); accountSubmit(e.target); }
+    if (['loginForm', 'registerForm', 'profileForm', 'forgotForm', 'resetForm'].includes(e.target.id)) { e.preventDefault(); accountSubmit(e.target); }
     if (e.target.id === 'wdForm') {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));

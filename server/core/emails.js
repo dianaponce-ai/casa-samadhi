@@ -63,7 +63,7 @@ export const VARS = {
 function varsFor(c) {
   const b = c.booking, g = c.gift, w = c.w;
   return {
-    '{nombre}': first(b?.name || g?.buyer_name || w?.name || ''),
+    '{nombre}': first(b?.name || g?.buyer_name || w?.name || c.person?.name || ''),
     '{servicio}': b?.service_name || g?.service_name || '',
     '{fecha}': b ? longDate(b.start) : g?.expires_at ? dayOnly(g.expires_at) : '',
     '{codigo}': b?.code || g?.code || w?.code || '',
@@ -108,6 +108,10 @@ export const TEMPLATES = {
   withdrawal: { group: 'giftcards', label: 'Arrepentimiento recibido', to: 'Clienta', when: 'Cuando alguien usa el Botón de arrepentimiento. Incluye el código de trámite (obligatorio).',
     render: (c) => ({ subject: `Recibimos tu pedido de arrepentimiento · ${c.w.code}`, title: 'Recibimos tu pedido', intro: `Hola ${esc(first(c.w.name))}, registramos tu pedido de arrepentimiento. Tu código de trámite es <b>${esc(c.w.code)}</b>. Te escribimos dentro de las 48 horas hábiles para coordinar la devolución.`, body: '' }) },
 
+  password_reset: { group: 'cuenta', label: 'Recuperar contraseña', to: 'Clienta o equipo', when: 'Cuando alguien toca "¿Te olvidaste la contraseña?" y escribe su email. El link vale 1 hora y se usa una sola vez.',
+    render: (c) => ({ subject: 'Cambiá tu contraseña de Casa Samadhi', title: 'Elegí una contraseña nueva', intro: `Hola ${esc(first(c.person?.name))}, recibimos un pedido para cambiar la contraseña de tu cuenta${c.person?.staff ? ' del panel' : ''}. Tocá el botón para elegir una nueva.`,
+      body: '', cta: 'Cambiar mi contraseña', ctaUrl: c.resetLink, foot: 'El link vale 1 hora y se puede usar una sola vez. Si no lo pediste vos, ignorá este email: tu contraseña no cambia.' }) },
+
   booking_staff: { group: 'casa', label: 'Turno nuevo', to: 'Equipo', when: 'Cada vez que se confirma un turno reservado en la web.',
     render: (c) => ({ subject: `Turno nuevo: ${c.booking.service_name} · ${longDate(c.booking.start)}`, title: 'Entró un turno', intro: '', body: bookingRows(c.booking, { contact: true }), cta: 'Abrir el panel', ctaUrl: c.home + 'admin/' }) },
   staff_cancelled: { group: 'casa', label: 'Cancelación de una clienta', to: 'Equipo', when: 'Cuando una clienta cancela su turno desde el link del email.',
@@ -124,7 +128,7 @@ export const TEMPLATES = {
     render: (c) => ({ subject: `Agenda de mañana · ${c.day ? longDate(c.day) : ''} · ${c.list.length} turno${c.list.length === 1 ? '' : 's'}`, title: `Mañana: ${c.day ? longDate(c.day) : ''}`, intro: c.list.length ? '' : 'No hay turnos para mañana.',
       body: c.list.length ? rows(c.list.map((b) => [`${b.start.slice(11)} · ${b.service_name}`, `${esc(b.name)}<br><span style="color:#6d675d">${esc(b.phone)}${b.price ? ` · resta ${money(rest(b))}` : ''}</span>`])) : '', cta: 'Ver la agenda', ctaUrl: c.home + 'admin/' }) },
 };
-export const GROUPS = { turnos: 'Turnos', giftcards: 'Gift cards y legales', casa: 'Para el equipo' };
+export const GROUPS = { turnos: 'Turnos', giftcards: 'Gift cards y legales', cuenta: 'Cuenta', casa: 'Para el equipo' };
 
 /** custom: { subject, intro } escritos en el panel (opcionales). */
 export function renderEmail(template, ctx, custom = {}) {
@@ -146,5 +150,5 @@ export function sampleContext(template, site, now = Date.now()) {
   const gift = { code: 'CS-K7QM-2XPA', token: 'ejemplo', amount: 55000, balance: template === 'giftcard_expiring' ? 25000 : 55000, service_name: 'Ritual esencial', buyer_name: 'Martina Herrera', buyer_email: 'martina@ejemplo.com', to_name: 'Sofía', to_email: 'sofia@ejemplo.com', message: '¡Feliz cumple! Regalate un momento para vos.', send_to_recipient: true, expires_at: new Date(now + (template === 'giftcard_expiring' ? 25 : 180) * 864e5).toISOString() };
   const w = { code: 'ARR-7KQ2MX', name: 'Lucía Fernández', email: 'lucia@ejemplo.com', ref: 'T-1042', reason: 'No voy a poder ir.' };
   const list = [{ ...booking }, { ...booking, code: 'T-1043', start: `${day} 15:30`, service_name: 'Esmaltado semipermanente', duration: 60, price: 16000, deposit_paid: 4800, name: 'Carolina Gómez', phone: '221 555-9876' }];
-  return { site, booking, gift, w, list, day, link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
+  return { site, booking, gift, w, list, day, person: { name: 'Lucía Fernández' }, resetLink: (site.publicUrl || '') + '/#clave/ejemplo', link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
 }

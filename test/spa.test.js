@@ -91,7 +91,7 @@ test('emails automáticos: seña pendiente, horario liberado, gracias, agenda di
   env.advance(11 * 3600e3); await tick(st, env); // pasa las 20 h: sale la agenda de mañana
   assert.ok(env.sent.some((m) => m.template === 'staff_daily' && m.to === 'equipo@ejemplo.com'));
   const t = await call(st, env, 'POST', '/api/admin/emails/test', { template: 'all', to: 'yo@ejemplo.com' }, st.staff[0]);
-  assert.equal(t.sent, 17);
+  assert.equal(t.sent, 18);
   assert.ok(env.sent.filter((m) => m.to === 'yo@ejemplo.com').every((m) => m.subject.startsWith('[Prueba]')));
 });
 
@@ -107,4 +107,23 @@ test('cuentas: registro, ingreso, mis turnos y el equipo entra al panel desde el
   st.staff.push({ id: 1, email: 'a@a.com', name: 'A', role: 'admin', password_hash: 'x$clave1234' });
   const s = await handle(st, env, { method: 'POST', path: '/api/account/login', query: {}, body: { email: 'a@a.com', password: 'clave1234' } });
   assert.equal(s.session.staff_id, 1);
+});
+
+test('recuperar contraseña por email (clienta y equipo)', async () => {
+  const st = seedState(), env = makeEnv();
+  st.customers = [{ id: 1, name: 'Ana', email: 'ana@ejemplo.com', phone: '', password_hash: 'x$vieja1234' }];
+  const acct = (path, body, method = 'POST') => handle(st, env, { method, path, query: {}, body });
+  assert.deepEqual((await acct('/api/account/forgot', { email: 'nadie@ejemplo.com' })).body, { ok: true });
+  assert.equal(env.sent.length, 0);
+  await acct('/api/account/forgot', { email: 'ana@ejemplo.com' });
+  const link = env.sent.at(-1).html.match(/#clave\/([A-Za-z0-9]+)/)[1];
+  const r = await acct('/api/account/reset', { token: link, password: 'nueva12345' });
+  assert.equal(r.customerSession.customer_id, 1);
+  assert.equal(st.customers[0].password_hash, 'x$nueva12345');
+  await assert.rejects(acct('/api/account/reset', { token: link, password: 'otra123456' }), (e) => e.status === 410);
+  st.staff.push({ id: 1, email: 'a@a.com', name: 'A', role: 'admin', password_hash: 'x$x' });
+  await acct('/api/account/forgot', { email: 'a@a.com' });
+  const t2 = env.sent.at(-1).html.match(/#clave\/([A-Za-z0-9]+)/)[1];
+  env.advance(61 * 60e3);
+  await assert.rejects(acct('/api/account/reset', { token: t2, password: 'clavelarga1' }), (e) => e.status === 410);
 });

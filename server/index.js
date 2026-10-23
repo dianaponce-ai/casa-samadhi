@@ -64,6 +64,7 @@ function limit(max, minutes) {
 app.post(['/api/bookings', '/api/giftcards', '/api/withdrawals'], limit(20, 15));
 app.post(['/api/admin/login', '/api/account/login'], limit(10, 15));
 app.post('/api/account/register', limit(8, 60));
+app.post(['/api/account/forgot', '/api/account/reset'], limit(6, 30));
 
 // Webhook de Mercado Pago: se consulta el pago a Mercado Pago (no se confía en lo que llega).
 app.post('/api/webhooks/mp', async (req, res) => {

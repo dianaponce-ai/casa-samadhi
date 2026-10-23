@@ -19,7 +19,7 @@ Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/sam
 | Recepción | recepcion@casasamadhi.demo | CasaSamadhi.Recep26 |
 | Clienta | clienta@casasamadhi.demo | Clienta.Samadhi26 |
 
-Se ingresa desde el ícono de la persona (**Mi cuenta**): la clienta ve sus turnos y gift cards; el equipo entra al panel. También en `/admin`.
+Se ingresa desde el ícono de la persona (**Mi cuenta**). Si alguien se olvida la contraseña (clienta o equipo), pide un link por email que vale 1 hora y se usa una sola vez: la clienta ve sus turnos y gift cards; el equipo entra al panel. También en `/admin`.
 En la demo de Vercel ya vienen cargados. En el servidor real se crean con `npm run demo-users` y **se borran antes de abrir al público** con `npm run demo-users -- --borrar`.
 
 ## Probarlo en tu compu

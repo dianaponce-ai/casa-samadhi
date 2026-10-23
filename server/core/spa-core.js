@@ -17,9 +17,10 @@ function ensure(st) {
   for (const k of Object.keys(TEMPLATES)) if (st.settings.emails.enabled[k] === undefined) st.settings.emails.enabled[k] = true;
   st.meta = st.meta || { lastDaily: '' };
   st.customers = st.customers || [];
+  st.resets = st.resets || [];
   st.ids.customer = st.ids.customer || 0;
 }
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers'];
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción' };
 export const BOOKING_STATUS = { pending_payment: 'Esperando seña', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 export const GIFT_STATUS = { pending_payment: 'Esperando pago', active: 'Activa', used: 'Usada', expired: 'Vencida', cancelled: 'Anulada' };
@@ -32,7 +33,7 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '' }, customers: [],
+    meta: { lastDaily: '' }, customers: [], resets: [],
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, bookingNumber: 1000 },
   };
@@ -466,7 +467,7 @@ export async function handle(st, env, req) {
   }
 
   // Mi cuenta (clientas)
-  if (seg[0] === 'account') return ok2(await accountRoute(st, env, method, seg[1], body, req));
+  if (seg[0] === 'account') return ok2(await accountRoute(st, env, method, seg[1], body, { ...req, query: q }));
 
   // Panel
   if (seg[0] !== 'admin') fail(404, 'No existe esa ruta.');
@@ -764,6 +765,40 @@ async function accountRoute(st, env, method, action, body, req) {
     fail(401, 'Email o contraseña incorrectos.');
   }
   if (method === 'POST' && action === 'logout') return { body: { ok: true }, customerSession: null };
+  // Recuperar contraseña: siempre responde lo mismo, exista o no la cuenta (así no se puede averiguar quién está registrado).
+  if (method === 'POST' && action === 'forgot') {
+    if (!isEmail(email)) fail(422, 'Escribí el email de tu cuenta.', { errors: { email: 'Escribí el email de tu cuenta.' } });
+    const person = st.customers.find((x) => x.email === email) || st.staff.find((x) => x.email === email);
+    if (person) {
+      const recent = st.resets.filter((r) => r.email === email && Date.parse(r.created_at) > env.now() - 15 * 60e3).length;
+      if (recent < 3) {
+        const tk = token() + token();
+        st.resets = st.resets.filter((r) => Date.parse(r.expires_at) > env.now() && !r.used).slice(-200);
+        st.resets.push({ token: tk, email, kind: st.staff.includes(person) ? 'staff' : 'customer', created_at: iso(env), expires_at: new Date(env.now() + 3600e3).toISOString(), used: false });
+        await sendEmail(st, env, 'password_reset', email, { person: { name: person.name || '', staff: st.staff.includes(person) }, resetLink: `${env.publicUrl}/#clave/${tk}` });
+      }
+    }
+    return { body: { ok: true } };
+  }
+  if (action === 'reset') {
+    const r = st.resets.find((x) => x.token === String(body.token || req.query?.token || ''));
+    const valid = r && !r.used && Date.parse(r.expires_at) > env.now();
+    if (method === 'GET') return { body: { valid: !!valid } };
+    if (method !== 'POST') fail(404, 'No existe esa ruta.');
+    if (!valid) fail(410, 'El link venció o ya se usó. Pedí uno nuevo desde "¿Te olvidaste la contraseña?".');
+    const pw = String(body.password || '');
+    if (pw.length < (r.kind === 'staff' ? 10 : 8)) fail(422, `La contraseña necesita al menos ${r.kind === 'staff' ? 10 : 8} caracteres.`, { errors: { password: `Al menos ${r.kind === 'staff' ? 10 : 8} caracteres.` } });
+    r.used = true;
+    st.resets.filter((x) => x.email === r.email).forEach((x) => (x.used = true));
+    if (r.kind === 'staff') {
+      const u = st.staff.find((x) => x.email === r.email); if (!u) fail(410, 'La cuenta ya no existe.');
+      u.password_hash = await env.hashPassword(pw);
+      return { body: { staff: staffView(u) }, session: { staff_id: u.id } };
+    }
+    const c = st.customers.find((x) => x.email === r.email); if (!c) fail(410, 'La cuenta ya no existe.');
+    c.password_hash = await env.hashPassword(pw);
+    return { body: accountData(st, env, c), customerSession: { customer_id: c.id } };
+  }
   const c = req.customer;
   if (!c) fail(401, 'Ingresá a tu cuenta.');
   if (method === 'GET' && action === 'me') return { body: accountData(st, env, c) };
