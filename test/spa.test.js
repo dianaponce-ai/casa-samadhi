@@ -70,3 +70,26 @@ test('bloqueos y panel', async () => {
   assert.equal(b.booking.status, 'confirmed');
   await assert.rejects(call(st, env, 'PUT', '/api/admin/settings/booking', { depositPercent: 50 }, { ...staff, role: 'staff' }), (e) => e.status === 403);
 });
+
+test('emails automáticos: seña pendiente, horario liberado, gracias, agenda diaria y prueba', async () => {
+  const st = seedState(), env = makeEnv();
+  st.settings.booking.staffEmails = 'equipo@ejemplo.com';
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who });
+  env.advance(16 * 60e3); await tick(st, env);
+  assert.ok(env.sent.some((m) => m.template === 'booking_pending'));
+  env.advance(15 * 60e3); await tick(st, env);
+  assert.ok(env.sent.some((m) => m.template === 'booking_expired'));
+  // Apagar un email desde el panel hace que no se mande.
+  st.staff.push({ id: 1, email: 'a@a.com', name: 'A', role: 'admin', password_hash: 'x$clave' });
+  await call(st, env, 'PUT', '/api/admin/settings/emails', { enabled: { booking_thanks: false }, custom: { booking_confirmed: { subject: 'Listo {nombre}: {servicio}' } } }, st.staff[0]);
+  const b = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '15:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: b.booking.token });
+  assert.ok(env.sent.some((m) => m.subject === 'Listo Ana: Ritual esencial'));
+  env.advance(3 * 864e5); await tick(st, env);
+  assert.equal(st.bookings[1].status, 'completed');
+  assert.ok(!env.sent.some((m) => m.template === 'booking_thanks'));
+  assert.ok(env.sent.some((m) => m.template === 'staff_daily' && m.to === 'equipo@ejemplo.com'));
+  const t = await call(st, env, 'POST', '/api/admin/emails/test', { template: 'all', to: 'yo@ejemplo.com' }, st.staff[0]);
+  assert.equal(t.sent, 17);
+  assert.ok(env.sent.filter((m) => m.to === 'yo@ejemplo.com').every((m) => m.subject.startsWith('[Prueba]')));
+});

@@ -287,3 +287,6 @@ td.r, th.r { text-align: right; }
 
 .side .brand .w { font-size: 21px; white-space: nowrap; }
 .login-box .brand .w { white-space: nowrap; }
+.ml-t { display: block; font-weight: 500; line-height: 1.35; }
+.ml-s { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.mail-row button { width: 100%; }

@@ -7,10 +7,17 @@
 //   env.sendEmail({ template, to, subject, html }) → Promise
 //   env.hashPassword(pw) / env.checkPassword(pw, hash)
 import { CATEGORIES, RESOURCES, SERVICES, SITE, HOURS, BOOKING, GIFTCARDS, FAQ, TERMS } from './defaults.js';
-import { renderEmail, TEMPLATES, longDate } from './emails.js';
+import { renderEmail, TEMPLATES, GROUPS, VARS, sampleContext, longDate } from './emails.js';
 
 export const STATE_VERSION = 1;
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids'];
+export const EMAIL_DEFAULTS = { enabled: {}, custom: {}, pendingMinutes: 15, thanksHours: 20, giftExpiringDays: 30, dailyHour: 20, reviewUrl: '' };
+/** Completa ajustes que faltan en estados guardados con versiones anteriores. */
+function ensure(st) {
+  st.settings.emails = { ...structuredClone(EMAIL_DEFAULTS), ...(st.settings.emails || {}) };
+  for (const k of Object.keys(TEMPLATES)) if (st.settings.emails.enabled[k] === undefined) st.settings.emails.enabled[k] = true;
+  st.meta = st.meta || { lastDaily: '' };
+}
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción' };
 export const BOOKING_STATUS = { pending_payment: 'Esperando seña', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 export const GIFT_STATUS = { pending_payment: 'Esperando pago', active: 'Activa', used: 'Usada', expired: 'Vencida', cancelled: 'Anulada' };
@@ -21,8 +28,9 @@ export function seedState() {
     v: STATE_VERSION,
     settings: {
       site: { ...SITE }, booking: { ...BOOKING }, hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
-      resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS },
+      resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
+    meta: { lastDaily: '' },
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, bookingNumber: 1000 },
   };
@@ -136,14 +144,18 @@ function publicGift(g) {
 // ── Emails ───────────────────────────────────────────────
 async function sendEmail(st, env, template, to, ctx, ref = {}) {
   if (!to) return;
-  const { subject, html } = renderEmail(template, { site: st.settings.site, cancelHours: st.settings.booking.cancelHours, home: env.publicUrl + '/', ...ctx });
+  ensure(st);
+  const E = st.settings.emails;
+  if (E.enabled[template] === false && !ref.test) return;
+  let { subject, html } = renderEmail(template, { site: st.settings.site, cancelHours: st.settings.booking.cancelHours, home: env.publicUrl + '/', reviewUrl: E.reviewUrl, ...ctx }, E.custom[template] || {});
+  if (ref.test) subject = '[Prueba] ' + subject;
   const id = ++st.ids.email;
   const row = { id, at: iso(env), template, to, subject, html, status: 'enviando', ...ref };
   st.emails.push(row);
   if (st.emails.length > 600) st.emails.splice(0, st.emails.length - 600);
   try { const r = await env.sendEmail({ template, to, subject, html }); row.status = r === 'sin-smtp' ? 'sin configurar' : 'enviado'; } catch (e) { row.status = 'error'; row.error = String(e.message || e).slice(0, 200); }
 }
-const staffTo = (st) => st.settings.booking.staffEmails || st.settings.site.email || '';
+export const staffTo = (st) => st.settings.booking.staffEmails || st.settings.site.email || '';
 const bookingLink = (env, b) => `${env.publicUrl}/#turno/${b.token}`;
 const giftLink = (env, g) => `${env.publicUrl}/#gift/${g.token}`;
 
@@ -211,7 +223,7 @@ async function cancelBooking(st, env, b, by) {
   refundGift(st, b);
   b.history.push({ at: iso(env), text: `Cancelado por ${by}` });
   await sendEmail(st, env, 'booking_cancelled', b.email, { booking: b }, { booking_id: b.id });
-  if (by === 'la clienta') await sendEmail(st, env, 'booking_staff', staffTo(st), { booking: { ...b, notes: `CANCELADO por la clienta.${wasPaid ? ' Tenía seña paga: coordinar devolución o nueva fecha.' : ''}` } }, { booking_id: b.id });
+  if (by === 'la clienta') await sendEmail(st, env, 'staff_cancelled', staffTo(st), { booking: b }, { booking_id: b.id });
 }
 
 // ── Gift cards ───────────────────────────────────────────
@@ -270,7 +282,8 @@ export async function applyPayment(st, env, { kind, token: tk, status, amount, p
         b.status = free ? 'confirmed' : 'attention';
         b.history.push({ at: iso(env), text: free ? 'Seña acreditada fuera de término; el horario seguía libre.' : 'Seña acreditada fuera de término y el horario ya estaba ocupado: hay que reprogramar o devolver.' });
       } else { b.status = 'confirmed'; b.history.push({ at: iso(env), text: `Seña acreditada (${fmtMoney(b.deposit_paid)})` }); }
-      await confirmEmails(st, env, b);
+      if (b.status === 'attention') await sendEmail(st, env, 'staff_attention', staffTo(st), { booking: b }, { booking_id: b.id });
+      else await confirmEmails(st, env, b);
     }
     return { ok: true, booking: publicBooking(st, env, b) };
   }
@@ -282,6 +295,7 @@ export async function applyPayment(st, env, { kind, token: tk, status, amount, p
       g.expires_at = new Date(env.now() + st.settings.giftcards.validityDays * 864e5).toISOString();
       g.history.push({ at: iso(env), amount: g.amount, note: 'Pagada online' });
       await giftEmails(st, env, g);
+      await sendEmail(st, env, 'staff_giftcard', staffTo(st), { gift: g }, { gift_id: g.id });
     }
     return { ok: true, gift: publicGift(g) };
   }
@@ -290,20 +304,45 @@ export async function applyPayment(st, env, { kind, token: tk, status, amount, p
 
 // ── Tareas periódicas (cada minuto) ──────────────────────
 export async function tick(st, env) {
+  ensure(st);
   const now = env.now();
+  const E = st.settings.emails;
   let changed = false;
   for (const b of st.bookings) {
-    if (b.status === 'pending_payment' && Date.parse(b.hold_until) < now) { b.status = 'expired'; refundGift(st, b); b.history.push({ at: iso(env), text: 'Venció el tiempo para pagar la seña' }); changed = true; }
+    if (b.status === 'pending_payment' && !b.pending_mailed && Date.parse(b.hold_until) > now && now - Date.parse(b.created_at) > E.pendingMinutes * 60e3) {
+      b.pending_mailed = true; changed = true;
+      await sendEmail(st, env, 'booking_pending', b.email, { booking: b, link: bookingLink(env, b), holdUntil: msToLocal(Date.parse(b.hold_until)).slice(11) }, { booking_id: b.id });
+    }
+    if (b.status === 'pending_payment' && Date.parse(b.hold_until) < now) {
+      b.status = 'expired'; refundGift(st, b); b.history.push({ at: iso(env), text: 'Venció el tiempo para pagar la seña' }); changed = true;
+      await sendEmail(st, env, 'booking_expired', b.email, { booking: b }, { booking_id: b.id });
+    }
     const startMs = localToMs(b.start);
     if (b.status === 'confirmed' && !b.reminded && startMs > now && startMs - now < st.settings.booking.reminderHours * 3600e3 && now - Date.parse(b.created_at) > 6 * 3600e3) {
       b.reminded = true; changed = true;
       await sendEmail(st, env, 'booking_reminder', b.email, { booking: b, link: bookingLink(env, b) }, { booking_id: b.id });
     }
     if (b.status === 'confirmed' && startMs + b.duration * 60e3 + 12 * 3600e3 < now) { b.status = 'completed'; changed = true; }
+    if (b.status === 'completed' && !b.thanked && b.email && startMs + b.duration * 60e3 + E.thanksHours * 3600e3 < now && now - startMs < 7 * 864e5) {
+      b.thanked = true; changed = true;
+      await sendEmail(st, env, 'booking_thanks', b.email, { booking: b }, { booking_id: b.id });
+    }
   }
   for (const g of st.giftcards) {
     if (g.status === 'active' && g.expires_at && Date.parse(g.expires_at) < now) { g.status = 'expired'; changed = true; }
     if (g.status === 'pending_payment' && Date.parse(g.created_at) < now - 3 * 864e5) { g.status = 'cancelled'; changed = true; }
+    if (g.status === 'active' && !g.expiring_mailed && g.balance > 0 && g.buyer_email && g.expires_at && Date.parse(g.expires_at) - now < E.giftExpiringDays * 864e5) {
+      g.expiring_mailed = true; changed = true;
+      await sendEmail(st, env, 'giftcard_expiring', g.buyer_email, { gift: g, link: giftLink(env, g) }, { gift_id: g.id });
+    }
+  }
+  // Agenda de mañana para el equipo, una vez por día a la hora elegida.
+  const ln = localNow(env), today = dayKey(ln);
+  if (ln.getUTCHours() >= E.dailyHour && st.meta.lastDaily !== today && staffTo(st)) {
+    st.meta.lastDaily = today; changed = true;
+    const day = addDays(today, 1);
+    const list = st.bookings.filter((b) => b.start.startsWith(day) && ['confirmed', 'attention'].includes(b.status)).sort((a, b) => a.start.localeCompare(b.start));
+    await sendEmail(st, env, 'staff_daily', staffTo(st), { day, list });
   }
   return changed;
 }
@@ -381,6 +420,7 @@ export async function handle(st, env, req) {
   const ok = (b) => ({ status: 200, body: b });
 
   // Públicas
+  ensure(st);
   if (method === 'GET' && path === '/api/site') return ok(publicSite(st, env));
   if (method === 'GET' && path === '/api/availability') return ok(availability(st, env, q.service, q.from, q.days));
   if (method === 'POST' && path === '/api/bookings') return ok(await createBooking(st, env, body));
@@ -410,7 +450,7 @@ export async function handle(st, env, req) {
     const w = { id: ++st.ids.withdrawal, code: `ARR-${randomCode(6)}`, name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), ref: clean(body.ref, 40).toUpperCase(), reason: clean(body.reason, 500), status: 'nuevo', created_at: iso(env) };
     st.withdrawals.push(w);
     await sendEmail(st, env, 'withdrawal', w.email, { w });
-    await sendEmail(st, env, 'booking_staff', staffTo(st), { booking: { code: w.ref, service_name: 'Pedido de arrepentimiento', start: msToLocal(env.now()), duration: 0, price: 0, name: w.name, email: w.email, phone: '', notes: `${w.code} · ${w.reason}` } });
+    await sendEmail(st, env, 'staff_withdrawal', staffTo(st), { w });
     return ok({ code: w.code });
   }
   if (method === 'POST' && path === '/api/pay/simulate') {
@@ -484,7 +524,7 @@ export async function handle(st, env, req) {
         b.history.push({ at: iso(env), text: `Reprogramado de ${b.start} a ${date} ${time} por ${staff.name || staff.email}` });
         b.start = `${date} ${time}`; b.reminded = false;
         if (b.status === 'attention') b.status = 'confirmed';
-        if (b.email && body.notify) await sendEmail(st, env, 'booking_confirmed', b.email, { booking: b, link: bookingLink(env, b) }, { booking_id: b.id });
+        if (b.email && body.notify) await sendEmail(st, env, 'booking_rescheduled', b.email, { booking: b, link: bookingLink(env, b) }, { booking_id: b.id });
       }
       if (body.status && body.status !== b.status) {
         if (!BOOKING_STATUS[body.status]) fail(422, 'Estado inválido.');
@@ -604,6 +644,18 @@ export async function handle(st, env, req) {
         const list = (body.resources || []).map((r) => ({ key: slugify(r.key || r.name), name: clean(r.name, 60), capacity: Math.max(1, Math.min(20, Math.round(Number(r.capacity) || 1))) })).filter((r) => r.name);
         if (!list.length) fail(422, 'Tiene que haber al menos un espacio.');
         S.resources = list;
+      } else if (key === 'emails') {
+        ensure(st);
+        const E = S.emails;
+        const n = (k, min, max) => { if (body[k] !== undefined) E[k] = Math.max(min, Math.min(max, Math.round(Number(body[k]) || 0))); };
+        n('pendingMinutes', 5, 120); n('thanksHours', 1, 96); n('giftExpiringDays', 1, 120); n('dailyHour', 0, 23);
+        if (body.reviewUrl !== undefined) E.reviewUrl = /^https?:\/\//.test(String(body.reviewUrl).trim()) || !String(body.reviewUrl).trim() ? clean(body.reviewUrl, 400) : fail(422, 'El link de reseñas tiene que empezar con https://');
+        if (body.enabled) for (const [k, v] of Object.entries(body.enabled)) if (TEMPLATES[k]) E.enabled[k] = !!v;
+        if (body.custom) for (const [k, v] of Object.entries(body.custom)) if (TEMPLATES[k]) {
+          const c = { subject: clean(v?.subject, 200), title: clean(v?.title, 120), intro: clean(v?.intro, 1500) };
+          if (c.subject || c.title || c.intro) E.custom[k] = c; else delete E.custom[k];
+        }
+        if (body.staffEmails !== undefined) S.booking.staffEmails = clean(body.staffEmails, 300);
       } else if (key === 'content') {
         if (body.faq !== undefined) S.content.faq = (body.faq || []).map((x) => ({ q: clean(x.q, 200), a: clean(x.a, 1500) })).filter((x) => x.q && x.a);
         if (body.terms !== undefined) S.content.terms = String(body.terms).slice(0, 20000);
@@ -613,6 +665,31 @@ export async function handle(st, env, req) {
     }
   }
 
+  if (A[0] === 'emails' && A[1] === 'templates' && method === 'GET') {
+    ensure(st);
+    const E = st.settings.emails;
+    const site = { ...st.settings.site, publicUrl: env.publicUrl, reviewUrl: E.reviewUrl };
+    return ok({ smtp: env.smtp ?? null, groups: GROUPS, vars: VARS, settings: { ...E, enabled: undefined, custom: undefined }, staffTo: staffTo(st),
+      templates: Object.entries(TEMPLATES).map(([key, t]) => {
+        const r = renderEmail(key, { ...sampleContext(key, site, env.now()), site }, E.custom[key] || {});
+        return { key, group: t.group, label: t.label, to: t.to, when: t.when, enabled: E.enabled[key] !== false, custom: E.custom[key] || {}, defaults: r.defaults, subject: r.subject, html: r.html };
+      }) });
+  }
+  if (A[0] === 'emails' && A[1] === 'preview' && method === 'POST') {
+    if (!TEMPLATES[body.template]) fail(404, 'No existe ese email.');
+    const site = { ...st.settings.site, publicUrl: env.publicUrl, reviewUrl: st.settings.emails?.reviewUrl || '' };
+    const r = renderEmail(body.template, { ...sampleContext(body.template, site, env.now()), site }, { subject: clean(body.subject, 200), title: clean(body.title, 120), intro: clean(body.intro, 1500) });
+    return ok({ subject: r.subject, html: r.html });
+  }
+  if (A[0] === 'emails' && A[1] === 'test' && method === 'POST') {
+    if (!TEMPLATES[body.template] && body.template !== 'all') fail(404, 'No existe ese email.');
+    if (!isEmail(body.to)) fail(422, 'Escribí el email al que querés mandar la prueba.');
+    const site = { ...st.settings.site, publicUrl: env.publicUrl };
+    const keys = body.template === 'all' ? Object.keys(TEMPLATES) : [body.template];
+    for (const k of keys) await sendEmail(st, env, k, String(body.to).trim(), { ...sampleContext(k, site, env.now()), link: env.publicUrl + '/' }, { test: true });
+    const last = st.emails.slice(-keys.length);
+    return ok({ sent: keys.length, status: last.map((m) => m.status), subjects: last.map((m) => m.subject) });
+  }
   if (A[0] === 'emails' && method === 'GET') {
     if (A[1]) { const m = st.emails.find((x) => x.id === Number(A[1])); if (!m) fail(404, 'No encontramos ese email.'); return ok({ email: m }); }
     return ok({ emails: [...st.emails].reverse().slice(0, 200).map(({ html, ...m }) => m), templates: Object.fromEntries(Object.entries(TEMPLATES).map(([k, t]) => [k, { label: t.label, to: t.to }])) });

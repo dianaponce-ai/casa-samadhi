@@ -7,6 +7,7 @@ const env = {
   now: () => Date.now(),
   publicUrl: base,
   mock: true,
+  smtp: 'demo',
   createPayment: async ({ kind, token }) => `#pago/${kind}/${token}`,
   sendEmail: async () => 'ok',
   hashPassword: async (pw) => 'demo$' + pw,

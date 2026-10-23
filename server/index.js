@@ -36,6 +36,7 @@ export const env = {
   now: () => Date.now(),
   publicUrl: config.publicUrl,
   mock: config.mp.mock,
+  smtp: !!config.mail.smtpUrl,
   createPayment,
   sendEmail,
   hashPassword: async (pw) => hashPassword(pw),

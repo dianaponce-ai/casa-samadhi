@@ -413,11 +413,79 @@ async function viewContent() {
 }
 
 // ── Emails ───────────────────────────────────────────────
+let mailTab = 'plantillas', mailSel = 'booking_confirmed', mailTo = '';
 async function viewEmails() {
-  const r = await api('/emails');
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Emails</h1><div class="sub">Lo que la web mandó automáticamente</div></div></div>
-    <div class="grid g2"><div class="card"><div class="mail-list">${r.emails.length ? r.emails.map((m) => `<button class="mail-row" data-mail="${m.id}"><span class="mail-subject">${esc(m.subject)}</span><span class="mail-meta">${esc(r.templates[m.template]?.label || m.template)} · ${esc(m.to)} · ${at(m.at)} · ${esc(m.status)}</span></button>`).join('') : '<p class="muted">Todavía no se mandó ningún email.</p>'}</div></div><div class="card" id="mailView"><p class="muted">Elegí un email para verlo.</p></div></div>`;
-  $$('[data-mail]').forEach((b) => (b.onclick = async () => { const { email: m } = await api('/emails/' + b.dataset.mail); $('#mailView').innerHTML = `<h2>${esc(m.subject)}</h2><p class="small muted">Para ${esc(m.to)} · ${at(m.at)}</p><iframe class="mail-frame" sandbox="" title="Vista del email"></iframe>`; $('#mailView iframe').srcdoc = m.html; }));
+  const [T, L] = await Promise.all([api('/emails/templates'), api('/emails')]);
+  const E = T.settings;
+  const cur = T.templates.find((t) => t.key === mailSel) || T.templates[0];
+  mailSel = cur.key;
+  const tabs = `<div class="tabs"><button class="${mailTab === 'plantillas' ? 'on' : ''}" data-mt="plantillas">Plantillas<span class="c">${T.templates.length}</span></button><button class="${mailTab === 'enviados' ? 'on' : ''}" data-mt="enviados">Enviados<span class="c">${L.emails.length}</span></button><button class="${mailTab === 'ajustes' ? 'on' : ''}" data-mt="ajustes">Ajustes</button></div>`;
+  const smtpNote = T.smtp === 'demo' ? '<div class="notice">Vista previa: las pruebas no salen a ningún correo, quedan en <b>Enviados</b> para que las veas. En la web publicada con SMTP_URL llegan de verdad.</div>'
+    : T.smtp ? '' : '<div class="notice">Todavía no hay un servidor de correo configurado (SMTP_URL en el .env): los emails y las pruebas quedan registrados en <b>Enviados</b> pero no salen.</div>';
+  let body = '';
+  if (mailTab === 'plantillas') {
+    body = `${smtpNote}
+    <div class="card form" style="margin-bottom:14px"><h2>Mandarme una prueba</h2>
+      <div class="row"><label class="fl"><span>Tu email</span><input id="tTo" type="email" value="${esc(mailTo || ME.email)}" placeholder="vos@ejemplo.com"></label>
+      <div class="fl"><span>&nbsp;</span><div class="actions"><button class="btn primary" id="tOne">Probar “${esc(cur.label)}”</button><button class="btn" id="tAll">Mandarme los ${T.templates.length}</button></div></div></div>
+      <p class="small muted">Las pruebas usan datos de ejemplo y llegan con “[Prueba]” en el asunto.</p><p class="small" id="tRes"></p></div>
+    <div class="grid g2" style="grid-template-columns:minmax(260px,.8fr) 1.4fr;align-items:start">
+      <div class="card">${Object.entries(T.groups).map(([g, gl]) => `<h2 style="margin-top:6px">${esc(gl)}</h2><div class="mail-list">${T.templates.filter((t) => t.group === g).map((t) => `
+        <div class="mail-row" style="${t.key === cur.key ? 'background:var(--bg);margin:0 -10px;padding:12px 10px;border-radius:8px' : ''}">
+          <label class="switch" title="${t.enabled ? 'Se envía' : 'Apagado'}"><input type="checkbox" data-en="${t.key}" ${t.enabled ? 'checked' : ''} ${isAdmin() ? '' : 'disabled'} aria-label="Enviar ${esc(t.label)}"><span></span></label>
+          <button data-sel="${t.key}" style="text-align:left"><span class="ml-t">${esc(t.label)}${Object.keys(t.custom).length ? ' <span class="pill">editado</span>' : ''}</span><span class="ml-s">Para: ${esc(t.to)}</span></button><span></span></div>`).join('')}</div>`).join('')}</div>
+      <div class="card form">
+        <div><h2 style="margin-bottom:4px">${esc(cur.label)}</h2><p class="small muted" style="margin:0">Para: <b>${esc(cur.to)}</b>${cur.group === 'casa' ? ` (${esc(T.staffTo || 'cargá el email del equipo en Ajustes')})` : ''} · ${esc(cur.when)}</p></div>
+        ${isAdmin() ? `<label class="fl"><span>Asunto</span><input id="eSub" value="${esc(cur.custom.subject || '')}" placeholder="${esc(cur.defaults.subject)}"></label>
+        <label class="fl"><span>Título</span><input id="eTit" value="${esc(cur.custom.title || '')}" placeholder="${esc(cur.defaults.title)}"></label>
+        <label class="fl"><span>Texto de apertura (vacío = el texto original)</span><textarea id="eIntro" rows="4" placeholder="Hola {nombre}, …">${esc(cur.custom.intro || '')}</textarea>
+          <span class="help">Podés usar ${Object.entries(T.vars).map(([k, v]) => `<code title="${esc(v)}">${esc(k)}</code>`).join(' ')}. Los datos del turno, la gift card y los botones se agregan solos.</span></label>
+        <div class="actions"><button class="btn primary" id="eSave">Guardar este email</button>${Object.keys(cur.custom).length ? '<button class="btn" id="eReset">Volver al texto original</button>' : ''}</div>` : ''}
+        <div class="small muted">Vista previa con datos de ejemplo · <b id="pvSub">${esc(cur.subject)}</b></div>
+        <iframe class="mail-frame" id="pv" sandbox="" title="Vista previa del email" style="width:100%;height:720px;border:1px solid var(--line);border-radius:8px;background:#f4efe6"></iframe>
+      </div></div>`;
+  } else if (mailTab === 'enviados') {
+    body = `${smtpNote}<div class="grid g2"><div class="card"><div class="mail-list">${L.emails.length ? L.emails.map((m) => `<button class="mail-row" data-mail="${m.id}" style="grid-template-columns:1fr auto;text-align:left"><span><span class="ml-t">${esc(m.subject)}</span><span class="ml-s">${esc(L.templates[m.template]?.label || m.template)} · ${esc(m.to)} · ${at(m.at)}</span></span><span class="pill ${m.status === 'enviado' ? 's-confirmed' : m.status === 'error' ? 's-attention' : ''}">${esc(m.status)}</span></button>`).join('') : '<p class="muted">Todavía no se mandó ningún email.</p>'}</div></div><div class="card" id="mailView"><p class="muted">Elegí un email para verlo.</p></div></div>`;
+  } else {
+    body = `<div class="card form" style="max-width:720px"><h2>Cuándo y a quién</h2>
+      <label class="fl"><span>Emails del equipo (avisos de turnos, cancelaciones, gift cards y agenda diaria)</span><input id="sStaff" value="${esc(T.staffTo)}" placeholder="turnos@casasamadhi.com.ar, otra@…"><span class="help">Separalos con coma.</span></label>
+      <label class="fl"><span>Link para dejar una reseña (va en “Gracias por venir”)</span><input id="sRev" type="url" value="${esc(E.reviewUrl)}" placeholder="https://g.page/r/…/review"><span class="help">En tu ficha de Google: Pedir reseñas → copiar el link.</span></label>
+      <div class="row"><label class="fl"><span>“Falta pagar la seña” a los (minutos)</span><input id="sPend" type="number" min="5" max="120" value="${E.pendingMinutes}"></label>
+        <label class="fl"><span>“Gracias por venir” a las (horas después)</span><input id="sThx" type="number" min="1" max="96" value="${E.thanksHours}"></label></div>
+      <div class="row"><label class="fl"><span>Aviso de gift card por vencer (días antes)</span><input id="sExp" type="number" min="1" max="120" value="${E.giftExpiringDays}"></label>
+        <label class="fl"><span>Hora de la “Agenda de mañana”</span><input id="sDaily" type="number" min="0" max="23" value="${E.dailyHour}"><span class="help">Hora de La Plata, de 0 a 23.</span></label></div>
+      <p class="small muted">El recordatorio del turno se configura en Configuración → Reservas.</p>
+      ${isAdmin() ? '<div class="actions"><button class="btn primary" id="sSave">Guardar ajustes</button></div>' : ''}</div>`;
+  }
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Emails</h1><div class="sub">Los ${T.templates.length} emails que la web manda sola. Podés verlos, cambiarles el texto, apagarlos y mandarte una prueba.</div></div></div>${tabs}${body}`;
+  $$('[data-mt]').forEach((b) => (b.onclick = () => { mailTab = b.dataset.mt; viewEmails(); }));
+  if (mailTab === 'plantillas') {
+    $('#pv').srcdoc = cur.html;
+    $$('[data-sel]').forEach((b) => (b.onclick = () => { mailSel = b.dataset.sel; viewEmails(); }));
+    $$('[data-en]').forEach((c) => (c.onchange = async () => { try { await api('/settings/emails', { method: 'PUT', body: { enabled: { [c.dataset.en]: c.checked } } }); toast(c.checked ? 'Se va a enviar' : 'Apagado: no se envía'); } catch (e) { toast(e.message, true); c.checked = !c.checked; } }));
+    let pt;
+    const preview = () => { clearTimeout(pt); pt = setTimeout(async () => { const r = await api('/emails/preview', { method: 'POST', body: { template: cur.key, subject: $('#eSub').value, title: $('#eTit').value, intro: $('#eIntro').value } }); $('#pv').srcdoc = r.html; $('#pvSub').textContent = r.subject; }, 300); };
+    for (const id of ['#eSub', '#eTit', '#eIntro']) $(id)?.addEventListener('input', preview);
+    $('#eSave')?.addEventListener('click', async () => { try { await api('/settings/emails', { method: 'PUT', body: { custom: { [cur.key]: { subject: $('#eSub').value, title: $('#eTit').value, intro: $('#eIntro').value } } } }); toast('Email guardado'); viewEmails(); } catch (e) { toast(e.message, true); } });
+    $('#eReset')?.addEventListener('click', async () => { await api('/settings/emails', { method: 'PUT', body: { custom: { [cur.key]: {} } } }); toast('Volvió al texto original'); viewEmails(); });
+    const test = async (template) => {
+      mailTo = $('#tTo').value.trim();
+      $('#tRes').textContent = 'Mandando…';
+      try {
+        const r = await api('/emails/test', { method: 'POST', body: { template, to: mailTo } });
+        const ok = r.status.filter((s) => s === 'enviado').length;
+        $('#tRes').textContent = T.smtp === 'demo' ? `Listo: ${r.sent} prueba${r.sent > 1 ? 's' : ''} en Enviados.` : ok === r.sent ? `Listo: ${r.sent} email${r.sent > 1 ? 's' : ''} enviado${r.sent > 1 ? 's' : ''} a ${mailTo}. Revisá también Spam.` : `Se registraron ${r.sent}, pero no salieron (${[...new Set(r.status)].join(', ')}). Revisá SMTP_URL.`;
+      } catch (e) { $('#tRes').textContent = e.message; }
+    };
+    $('#tOne').onclick = () => test(cur.key);
+    $('#tAll').onclick = () => test('all');
+  } else if (mailTab === 'enviados') {
+    $$('[data-mail]').forEach((b) => (b.onclick = async () => { const { email: m } = await api('/emails/' + b.dataset.mail); $('#mailView').innerHTML = `<h2>${esc(m.subject)}</h2><p class="small muted">Para ${esc(m.to)} · ${at(m.at)} · ${esc(m.status)}${m.error ? ` · ${esc(m.error)}` : ''}</p><iframe class="mail-frame" sandbox="" title="Vista del email" style="width:100%;height:720px;border:1px solid var(--line);border-radius:8px"></iframe>`; $('#mailView iframe').srcdoc = m.html; }));
+  } else {
+    $('#sSave')?.addEventListener('click', async () => {
+      try { await api('/settings/emails', { method: 'PUT', body: { staffEmails: $('#sStaff').value, reviewUrl: $('#sRev').value, pendingMinutes: $('#sPend').value, thanksHours: $('#sThx').value, giftExpiringDays: $('#sExp').value, dailyHour: $('#sDaily').value } }); toast('Ajustes guardados'); } catch (e) { toast(e.message, true); }
+    });
+  }
 }
 async function viewWithdrawals() {
   const r = await api('/withdrawals');
