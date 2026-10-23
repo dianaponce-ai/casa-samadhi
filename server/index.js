@@ -29,8 +29,9 @@ function verify(t) {
   const p = JSON.parse(Buffer.from(b, 'base64url').toString());
   return p.exp > Date.now() / 1000 ? p : null;
 }
-const readCookie = (req) => (req.headers.cookie || '').split(';').map((x) => x.trim().split('=')).find(([k]) => k === COOKIE)?.[1];
-const setCookie = (res, v, age) => res.append('Set-Cookie', `${COOKIE}=${v}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${age}${config.publicUrl.startsWith('https') ? '; Secure' : ''}`);
+const CCOOKIE = 'casa_samadhi_cliente', CAGE = 30 * 24 * 3600;
+const readCookie = (req, name = COOKIE) => (req.headers.cookie || '').split(';').map((x) => x.trim().split('=')).find(([k]) => k === name)?.[1];
+const setCookie = (res, v, age, name = COOKIE) => res.append('Set-Cookie', `${name}=${v}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${age}${config.publicUrl.startsWith('https') ? '; Secure' : ''}`);
 
 export const env = {
   now: () => Date.now(),
@@ -61,7 +62,8 @@ function limit(max, minutes) {
   };
 }
 app.post(['/api/bookings', '/api/giftcards', '/api/withdrawals'], limit(20, 15));
-app.post('/api/admin/login', limit(10, 15));
+app.post(['/api/admin/login', '/api/account/login'], limit(10, 15));
+app.post('/api/account/register', limit(8, 60));
 
 // Webhook de Mercado Pago: se consulta el pago a Mercado Pago (no se confía en lo que llega).
 app.post('/api/webhooks/mp', async (req, res) => {
@@ -86,9 +88,14 @@ app.use('/api', async (req, res, next) => {
   try {
     const p = verify(readCookie(req));
     const staff = p ? state.staff.find((u) => u.id === p.uid) : null;
+    const pc = verify(readCookie(req, CCOOKIE));
+    const customer = pc ? (state.customers || []).find((c) => c.id === pc.cid) : null;
+    // Las acciones de la cuenta solo aceptan JSON (protección contra envíos desde otros sitios).
+    if (req.path.startsWith('/account') && req.method !== 'GET' && !String(req.get('content-type') || '').includes('application/json')) return res.status(403).json({ error: 'Pedido rechazado.' });
     if (req.path.startsWith('/admin') && !['GET', 'HEAD'].includes(req.method) && !['/admin/login'].includes(req.path) && req.get('x-casa-admin') !== '1') return res.status(403).json({ error: 'Pedido rechazado.' });
-    const out = await withState((st) => handle(st, env, { method: req.method, path: '/api' + req.path, query: req.query, body: req.body, staff }), req.method !== 'GET');
+    const out = await withState((st) => handle(st, env, { method: req.method, path: '/api' + req.path, query: req.query, body: req.body, staff, customer }), req.method !== 'GET');
     if (out.session !== undefined) setCookie(res, out.session ? sign({ uid: out.session.staff_id, exp: Math.floor(Date.now() / 1000) + AGE }) : '', out.session ? AGE : 0);
+    if (out.customerSession !== undefined) setCookie(res, out.customerSession ? sign({ cid: out.customerSession.customer_id, exp: Math.floor(Date.now() / 1000) + CAGE }) : '', out.customerSession ? CAGE : 0, CCOOKIE);
     res.status(out.status).json(out.body);
   } catch (e) { next(e); }
 });

@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync, cpSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEMO_USERS } from './demo-users-list.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = process.argv.find((a) => a.endsWith('.html')) || path.join(ROOT, 'dist/vista-previa.html');
@@ -38,6 +39,7 @@ ${body}
 <script>
 window.__MEDIA_MAP = ${j(media)};
 window.__CASA_MEDIA = (u) => window.__MEDIA_MAP[String(u || '').replace(/^\\//, '')] || u;
+window.__CASA_DEMO_USERS = ${j(DEMO_USERS)};
 window.__ADMIN_CSS = ${j(adminCss)};
 window.__ADMIN_HTML = ${j(adminHtml)};
 </script>

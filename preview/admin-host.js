@@ -10,13 +10,9 @@ root.innerHTML = `<style>${window.__ADMIN_CSS}
 .demo-flag button { background: color-mix(in srgb, var(--panel) 18%, transparent); color: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
 </style><div class="admin-shell">${window.__ADMIN_HTML}</div>
 <div class="demo-flag">Vista previa · datos de ejemplo <button id="demoBack">Volver a la web</button><button id="demoReset">Reiniciar datos</button></div>`;
-function close() { host.hidden = true; document.body.style.overflow = ''; location.hash = ''; window.dispatchEvent(new Event('casa-refresh')); }
+function close(logout) { if (logout) window.__CASA_ADMIN_API('/logout', { method: 'POST', body: {} }); host.hidden = true; document.body.style.overflow = ''; location.hash = ''; window.dispatchEvent(new Event('casa-refresh')); }
 root.getElementById('demoBack').onclick = close;
 root.getElementById('demoReset').onclick = () => { window.__CASA_RESET(); location.hash = ''; location.reload(); };
-window.__ADMIN_EMBED = { root, manualBoot: true, api: (p, o) => window.__CASA_ADMIN_API(p, o), exit: () => close(), scrollTop: () => { host.scrollTop = 0; } };
-async function open() { await window.__CASA_DEMO_LOGIN(); host.hidden = false; host.scrollTop = 0; document.body.style.overflow = 'hidden'; window.__adminBoot(); }
-const li = document.createElement('li');
-li.innerHTML = '<button type="button" id="demoPanel">Panel de la casa (vista previa)</button>';
-document.querySelector('footer ul:last-of-type')?.parentElement && document.querySelectorAll('footer ul')[1]?.appendChild(li);
-li.querySelector('button').onclick = open;
+window.__ADMIN_EMBED = { root, manualBoot: true, api: (p, o) => window.__CASA_ADMIN_API(p, o), exit: (logout) => close(logout), scrollTop: () => { host.scrollTop = 0; } };
+async function open() { host.hidden = false; host.scrollTop = 0; document.body.style.overflow = 'hidden'; window.__adminBoot(); }
 window.__CASA_OPEN_ADMIN = open;

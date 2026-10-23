@@ -16,8 +16,10 @@ function ensure(st) {
   st.settings.emails = { ...structuredClone(EMAIL_DEFAULTS), ...(st.settings.emails || {}) };
   for (const k of Object.keys(TEMPLATES)) if (st.settings.emails.enabled[k] === undefined) st.settings.emails.enabled[k] = true;
   st.meta = st.meta || { lastDaily: '' };
+  st.customers = st.customers || [];
+  st.ids.customer = st.ids.customer || 0;
 }
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta'];
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción' };
 export const BOOKING_STATUS = { pending_payment: 'Esperando seña', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 export const GIFT_STATUS = { pending_payment: 'Esperando pago', active: 'Activa', used: 'Usada', expired: 'Vencida', cancelled: 'Anulada' };
@@ -30,7 +32,7 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '' },
+    meta: { lastDaily: '' }, customers: [],
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, bookingNumber: 1000 },
   };
@@ -176,7 +178,7 @@ function refundGift(st, b) {
   b.gift_applied = 0;
 }
 
-async function createBooking(st, env, body) {
+async function createBooking(st, env, body, customer = null) {
   const s = st.services.find((x) => x.id === Number(body.service_id) && x.visible);
   if (!s) fail(404, 'Elegí un servicio.');
   if (s.mode !== 'online') fail(422, 'Este servicio se coordina por WhatsApp.');
@@ -198,7 +200,7 @@ async function createBooking(st, env, body) {
     id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: token(), service_id: s.id, service_name: s.name + (s.tag && s.category === 'manicuria' ? ` · ${s.tag}` : ''), resource: s.resource,
     start: `${body.date} ${body.time}`, duration: Number(s.duration) || 60, price, deposit, deposit_due: depositDue, deposit_paid: 0, gift_id: gift?.id || null, gift_code: gift?.code || '', gift_applied: giftApplied,
     name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), phone: clean(body.phone, 40), notes: clean(body.notes, 500),
-    status: depositDue > 0 ? 'pending_payment' : 'confirmed', source: 'web', created_at: iso(env),
+    status: depositDue > 0 ? 'pending_payment' : 'confirmed', source: 'web', created_at: iso(env), customer_id: customer?.id || null,
     hold_until: new Date(env.now() + (Number(st.settings.booking.holdMinutes) || 30) * 60e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [],
   };
   if (gift && giftApplied) { gift.balance -= giftApplied; if (gift.balance <= 0) gift.status = 'used'; gift.history.push({ at: iso(env), amount: -giftApplied, note: `Turno ${b.code}` }); }
@@ -394,7 +396,7 @@ function clients(st, q) {
   const map = new Map();
   for (const b of [...st.bookings].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     const k = b.email || b.phone;
-    const c = map.get(k) || { email: b.email, name: b.name, phone: b.phone, visits: 0, upcoming: 0, last: '', spent: 0, services: {} };
+    const c = map.get(k) || { email: b.email, name: b.name, phone: b.phone, visits: 0, upcoming: 0, last: '', spent: 0, services: {}, account: st.customers?.some((x) => x.email === b.email) };
     c.name = b.name; c.phone = b.phone || c.phone;
     if (b.status === 'completed') { c.visits++; c.spent += b.price; }
     if (['confirmed', 'pending_payment'].includes(b.status)) c.upcoming++;
@@ -418,12 +420,13 @@ export async function handle(st, env, req) {
   const body = req.body || {};
   const seg = path.replace(/^\/api\/?/, '').split('/').filter(Boolean);
   const ok = (b) => ({ status: 200, body: b });
+  const ok2 = (r) => ({ status: 200, ...r });
 
   // Públicas
   ensure(st);
   if (method === 'GET' && path === '/api/site') return ok(publicSite(st, env));
   if (method === 'GET' && path === '/api/availability') return ok(availability(st, env, q.service, q.from, q.days));
-  if (method === 'POST' && path === '/api/bookings') return ok(await createBooking(st, env, body));
+  if (method === 'POST' && path === '/api/bookings') return ok(await createBooking(st, env, body, req.customer));
   if (seg[0] === 'bookings' && seg[1]) {
     const b = st.bookings.find((x) => x.token === seg[1]);
     if (!b) fail(404, 'No encontramos ese turno.');
@@ -461,6 +464,9 @@ export async function handle(st, env, req) {
     const amount = kind === 'gift' ? item.amount : item.deposit_due;
     return ok(await applyPayment(st, env, { kind, token: body.token, status: body.result === 'rejected' ? 'rejected' : 'approved', amount, payment_id: 'SIM-' + randomCode(8, '0123456789') }));
   }
+
+  // Mi cuenta (clientas)
+  if (seg[0] === 'account') return ok2(await accountRoute(st, env, method, seg[1], body, req));
 
   // Panel
   if (seg[0] !== 'admin') fail(404, 'No existe esa ruta.');
@@ -721,6 +727,63 @@ export async function handle(st, env, req) {
     }
   }
   fail(404, 'No existe esa ruta.');
+}
+
+// ── Cuentas de clientas ──────────────────────────────────
+const customerView = (c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, created_at: c.created_at });
+/** Turnos y gift cards de una clienta: los suyos y los que reservó con el mismo email sin cuenta. */
+function accountData(st, env, c) {
+  const mine = st.bookings.filter((b) => b.customer_id === c.id || b.email === c.email).filter((b) => b.status !== 'expired');
+  const nowKey = msToLocal(env.now());
+  const upcoming = mine.filter((b) => b.start >= nowKey.slice(0, 10) && ['confirmed', 'pending_payment', 'attention'].includes(b.status)).sort((a, b) => a.start.localeCompare(b.start));
+  const past = mine.filter((b) => !upcoming.includes(b)).sort((a, b) => b.start.localeCompare(a.start)).slice(0, 30);
+  const gifts = st.giftcards.filter((g) => g.status !== 'pending_payment' && (g.buyer_email === c.email || g.to_email === c.email)).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return { customer: customerView(c), upcoming: upcoming.map((b) => publicBooking(st, env, b)), past: past.map((b) => publicBooking(st, env, b)), giftcards: gifts.map(publicGift) };
+}
+async function accountRoute(st, env, method, action, body, req) {
+  const email = String(body.email || '').toLowerCase().trim();
+  if (method === 'POST' && action === 'register') {
+    const e = {
+      name: clean(body.name).length < 3 ? 'Escribí tu nombre y apellido.' : '',
+      email: !isEmail(email) ? 'Revisá el email.' : st.customers.some((c) => c.email === email) || st.staff.some((u) => u.email === email) ? 'Ya hay una cuenta con ese email. Ingresá con tu contraseña.' : '',
+      phone: digits(body.phone).length < 8 ? 'Dejanos un celular con WhatsApp.' : '',
+      password: String(body.password || '').length < 8 ? 'La contraseña necesita al menos 8 caracteres.' : '',
+    };
+    errs(e);
+    const c = { id: ++st.ids.customer, name: clean(body.name, 80), email, phone: clean(body.phone, 40), password_hash: await env.hashPassword(String(body.password)), created_at: iso(env) };
+    st.customers.push(c);
+    return { body: accountData(st, env, c), customerSession: { customer_id: c.id } };
+  }
+  if (method === 'POST' && action === 'login') {
+    const pw = String(body.password || '');
+    const c = st.customers.find((x) => x.email === email);
+    if (c && await env.checkPassword(pw, c.password_hash)) return { body: accountData(st, env, c), customerSession: { customer_id: c.id } };
+    // El equipo también puede entrar desde acá: se abre el panel.
+    const u = st.staff.find((x) => x.email === email);
+    if (u && await env.checkPassword(pw, u.password_hash)) return { body: { staff: staffView(u) }, session: { staff_id: u.id } };
+    fail(401, 'Email o contraseña incorrectos.');
+  }
+  if (method === 'POST' && action === 'logout') return { body: { ok: true }, customerSession: null };
+  const c = req.customer;
+  if (!c) fail(401, 'Ingresá a tu cuenta.');
+  if (method === 'GET' && action === 'me') return { body: accountData(st, env, c) };
+  if (method === 'PATCH' && action === 'me') {
+    if (body.name !== undefined) { if (clean(body.name).length < 3) fail(422, 'Escribí tu nombre y apellido.'); c.name = clean(body.name, 80); }
+    if (body.phone !== undefined) { if (digits(body.phone).length < 8) fail(422, 'Revisá el celular.'); c.phone = clean(body.phone, 40); }
+    if (body.password) {
+      if (!(await env.checkPassword(String(body.current || ''), c.password_hash))) fail(422, 'La contraseña actual no es correcta.');
+      if (String(body.password).length < 8) fail(422, 'La contraseña nueva necesita al menos 8 caracteres.');
+      c.password_hash = await env.hashPassword(String(body.password));
+    }
+    return { body: accountData(st, env, c) };
+  }
+  fail(404, 'No existe esa ruta.');
+}
+export async function addCustomer(st, env, { email, password, name, phone = '' }) {
+  ensure(st);
+  const c = { id: ++st.ids.customer, name, email: String(email).toLowerCase().trim(), phone, password_hash: await env.hashPassword(String(password)), created_at: iso(env) };
+  st.customers.push(c);
+  return c;
 }
 
 /** Crea un usuario del panel (para el primer arranque o el script create-admin). */

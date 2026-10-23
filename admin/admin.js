@@ -227,7 +227,7 @@ async function viewClients() {
   const load = async () => {
     const r = await api('/clients?q=' + encodeURIComponent($('#cq').value));
     $('#clist').innerHTML = r.clients.length ? `<div class="card tablewrap"><table><tr><th>Nombre</th><th>Contacto</th><th>Lo que más se hace</th><th class="r">Visitas</th><th class="r">Próximos</th><th>Último turno</th></tr>
-      ${r.clients.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.upcoming}</td><td class="n">${c.last ? shortWhen(c.last) : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty card">Todavía no hay clientas.</div>';
+      ${r.clients.map((c) => `<tr><td>${esc(c.name)}${c.account ? ' <span class="pill s-active">Con cuenta</span>' : ''}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.upcoming}</td><td class="n">${c.last ? shortWhen(c.last) : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty card">Todavía no hay clientas.</div>';
   };
   let t; $('#cq').oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };
   load();

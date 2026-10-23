@@ -13,6 +13,7 @@ const MONTHS_L = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio'
 const ICON_X = '<svg viewBox="0 0 16 16"><path d="M2 2l12 12M14 2L2 14"/></svg>';
 
 let SITE = null;
+let ACC = null; // clienta con sesión iniciada (datos de Mi cuenta)
 async function api(path, body, method) {
   method = method || (body ? 'POST' : 'GET');
   if (window.__CASA_API) return window.__CASA_API(path, { method, body });
@@ -181,7 +182,7 @@ function renderSections() {
     `<li><a href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a></li>`,
   ].join('');
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>
-    <button data-book>Reservar turno</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
+    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
     <hr><a class="sm" href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a><a class="sm" href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a><a class="sm" href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram</a>`;
   if (!SITE.giftcards.enabled) { $('#giftcards').hidden = true; $$('[data-gift]').forEach((b) => (b.hidden = true)); }
   const g = SITE.services.find((s) => s.slug === 'ritual-esencial');
@@ -203,7 +204,7 @@ function openDrawer(html, { doc = false, label = 'Reservar' } = {}) {
 function closeAll() {
   $('#drawer').classList.remove('on'); $('#mnav').classList.remove('on'); $('#scrim').classList.remove('on');
   document.body.style.overflow = '';
-  if (/^#(turno|gift|pago|reservar|regalar|terminos|arrepentimiento)/.test(location.hash)) setHash('');
+  if (/^#(turno|gift|pago|reservar|regalar|terminos|arrepentimiento|cuenta)/.test(location.hash)) setHash('');
   lastFocus?.focus?.({ preventScroll: true });
 }
 function setHash(h) { try { history.replaceState(null, '', h || location.pathname + location.search); } catch {} }
@@ -212,6 +213,7 @@ const head = (title, back) => `<div class="dhead">${back ? `<button class="back"
 // ── Reserva ──────────────────────────────────────────────
 const bk = { step: 1, service: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '' };
 function openBooking({ serviceId = null, category = null } = {}) {
+  if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone };
   Object.assign(bk, { step: serviceId ? 2 : 1, service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
   setHash('#reservar');
   renderBooking(true);
@@ -430,6 +432,65 @@ function openWithdraw(done) {
     </form>`}</div>`, { label: 'Botón de arrepentimiento' });
 }
 
+// ── Mi cuenta ────────────────────────────────────────────
+const acc = { mode: 'login', error: '', errors: {}, sending: false };
+async function openAccount(mode) {
+  setHash('#cuenta');
+  if (mode) acc.mode = mode;
+  openDrawer(`${head('Mi cuenta')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Mi cuenta' });
+  try { ACC = await api('/api/account/me'); } catch { ACC = null; }
+  renderAccount();
+}
+function demoHint() {
+  const U = window.__CASA_DEMO_USERS;
+  if (!U) return '';
+  return `<div class="sel-sum" style="margin-top:18px"><span class="n" style="font-size:17px">Usuarios de prueba</span>${U.map((u) => `<button type="button" class="link-btn" style="text-align:left;text-transform:none;letter-spacing:0;font-size:13px" data-demo-user="${esc(u.email)}|${esc(u.password)}">${u.kind === 'customer' ? 'Clienta' : u.role === 'admin' ? 'Administración' : 'Recepción'}: ${esc(u.email)} · ${esc(u.password)}</button>`).join('')}<span class="note">Tocá uno para completar el formulario.</span></div>`;
+}
+function renderAccount() {
+  const e = acc.errors;
+  const field = (k, label, type = 'text', extra = '') => `<div class="fl"><label for="a_${k}">${label}</label><input id="a_${k}" name="${k}" type="${type}" ${e[k] ? 'aria-invalid="true"' : ''} ${extra}>${e[k] ? `<span class="err">${esc(e[k])}</span>` : ''}</div>`;
+  let body;
+  if (acc.staff) {
+    body = `<div class="status"><span class="pill ok">Equipo</span><div class="big">Hola, ${esc(acc.staff.name || acc.staff.email)}</div><p>Entraste con un usuario del equipo (${esc(acc.staff.role_label)}).</p><button class="btn solid" data-open-panel>Entrar al panel</button></div>`;
+  } else if (!ACC && acc.mode === 'login') {
+    body = `<p class="doc-body" style="padding-top:14px">Ingresá para ver tus turnos y gift cards, cancelar o reservar de nuevo más rápido.</p>
+      <form class="bk" id="loginForm" novalidate>${field('email', 'Email', 'email', 'autocomplete="email" autofocus')}${field('password', 'Contraseña', 'password', 'autocomplete="current-password"')}
+      ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Ingresar</button></form>
+      <p class="note" style="margin-top:18px">¿No tenés cuenta? <button class="link-btn" data-acc-mode="register">Creala acá</button>. ¿Te olvidaste la contraseña? Escribinos por <a href="${wa(SITE.site.whatsapp, 'Hola! Me olvidé la contraseña de mi cuenta en la web.')}" target="_blank" rel="noopener">WhatsApp</a>.</p>${demoHint()}`;
+  } else if (!ACC) {
+    body = `<p class="doc-body" style="padding-top:14px">Con tu cuenta ves todos tus turnos y gift cards en un solo lugar.</p>
+      <form class="bk" id="registerForm" novalidate>${field('name', 'Nombre y apellido', 'text', 'autocomplete="name" autofocus')}<div class="row2">${field('email', 'Email', 'email', 'autocomplete="email"')}${field('phone', 'Celular (WhatsApp)', 'tel', 'autocomplete="tel"')}</div>${field('password', 'Contraseña (8 o más caracteres)', 'password', 'autocomplete="new-password"')}
+      ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Crear mi cuenta</button></form>
+      <p class="note" style="margin-top:18px">¿Ya tenés cuenta? <button class="link-btn" data-acc-mode="login">Ingresá</button>.</p>`;
+  } else {
+    const c = ACC.customer;
+    const card = (b, past) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(b.service_name)}</b><br>${esc(cap(b.when))}${past ? ` · ${esc(b.status_label)}` : b.status !== 'confirmed' ? ` · ${esc(b.status_label)}` : ''}</dt><dd>${past ? `<button class="btn sm" data-rebook="${esc(b.service_name)}">Reservar de nuevo</button>` : `<button class="btn sm" data-show-turno="${esc(b.token)}">Ver</button>`}</dd></div></div>`;
+    body = `<div class="status" style="gap:6px"><div class="big">Hola, ${esc(c.name.split(' ')[0])}</div><p class="note">${esc(c.email)} · ${esc(c.phone)}</p></div>
+      <div class="step-t">Próximos turnos</div>${ACC.upcoming.length ? ACC.upcoming.map((b) => card(b)).join('') : '<p class="empty-slots">No tenés turnos por delante.</p>'}
+      <button class="btn solid sm" data-book style="margin-top:10px">Reservar un turno</button>
+      ${ACC.giftcards.length ? `<div class="step-t" style="margin-top:26px">Gift cards</div>${ACC.giftcards.map((g) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(g.service_name || fmt(g.amount))}</b> · ${esc(g.status_label)}<br>${esc(g.code || '')}${g.status === 'active' ? ` · saldo ${fmt(g.balance)}` : ''}</dt><dd><button class="btn sm" data-show-gift="${esc(g.token)}">Ver</button></dd></div></div>`).join('')}` : ''}
+      ${ACC.past.length ? `<div class="step-t" style="margin-top:26px">Historial</div>${ACC.past.map((b) => card(b, true)).join('')}` : ''}
+      <div class="step-t" style="margin-top:26px">Mis datos</div>
+      <form class="bk" id="profileForm" novalidate><div class="row2"><div class="fl"><label for="p_name">Nombre</label><input id="p_name" name="name" value="${esc(c.name)}"></div><div class="fl"><label for="p_phone">Celular</label><input id="p_phone" name="phone" value="${esc(c.phone)}"></div></div>
+        <div class="row2"><div class="fl"><label for="p_cur">Contraseña actual</label><input id="p_cur" name="current" type="password" autocomplete="current-password" placeholder="Solo si la querés cambiar"></div><div class="fl"><label for="p_new">Contraseña nueva</label><input id="p_new" name="password" type="password" autocomplete="new-password"></div></div>
+        ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sm" type="submit">Guardar mis datos</button><button class="btn sm" type="button" data-logout>Salir</button></div></form>`;
+  }
+  $('#drawer').innerHTML = `${head(ACC ? 'Mi cuenta' : acc.mode === 'register' ? 'Crear cuenta' : 'Ingresar')}<div class="dbody">${body}</div>`;
+}
+async function accountSubmit(form) {
+  const d = Object.fromEntries(new FormData(form));
+  acc.error = ''; acc.errors = {}; acc.sending = true;
+  try {
+    if (form.id === 'loginForm') {
+      const r = await api('/api/account/login', d);
+      if (r.staff) { acc.staff = r.staff; ACC = null; } else { ACC = r; acc.staff = null; toast(`Hola, ${r.customer.name.split(' ')[0]}`); }
+    } else if (form.id === 'registerForm') { ACC = await api('/api/account/register', d); toast('Cuenta creada'); }
+    else if (form.id === 'profileForm') { ACC = await api('/api/account/me', d, 'PATCH'); toast('Datos guardados'); }
+  } catch (err) { acc.errors = err.data?.errors || {}; acc.error = Object.keys(acc.errors).length ? '' : err.message; }
+  acc.sending = false; renderAccount();
+  if (ACC) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone };
+}
+
 // ── Eventos ──────────────────────────────────────────────
 function route() {
   const h = decodeURIComponent(location.hash.slice(1));
@@ -440,6 +501,7 @@ function route() {
   else if (h === 'regalar') openGift();
   else if (h === 'terminos') openLegal();
   else if (h === 'arrepentimiento') openWithdraw();
+  else if (h === 'cuenta') openAccount();
 }
 function bind() {
   document.addEventListener('click', async (e) => {
@@ -454,6 +516,14 @@ function bind() {
     if (t.closest('[data-gift]')) return openGift();
     if (t.closest('[data-legal]')) { if ($('#drawer').classList.contains('on') && (bk.step === 3 || $('#gfForm'))) { readBkForm(); readGfForm(); } return openLegal(); }
     if (t.closest('[data-withdraw]')) return openWithdraw();
+    if (t.closest('[data-account]')) return openAccount();
+    const am = t.closest('[data-acc-mode]'); if (am) { acc.mode = am.dataset.accMode; acc.error = ''; acc.errors = {}; return renderAccount(); }
+    const du = t.closest('[data-demo-user]'); if (du) { const [em, pw] = du.dataset.demoUser.split('|'); acc.mode = 'login'; renderAccount(); $('#a_email').value = em; $('#a_password').value = pw; return; }
+    if (t.closest('[data-open-panel]')) { if (window.__CASA_OPEN_ADMIN) { closeAll(); window.__CASA_OPEN_ADMIN(); } else location.href = '/admin/'; return; }
+    if (t.closest('[data-logout]')) { await api('/api/account/logout', {}); ACC = null; bk.form = {}; acc.mode = 'login'; toast('Cerraste sesión'); return renderAccount(); }
+    const stt = t.closest('[data-show-turno]'); if (stt) return showBooking(stt.dataset.showTurno);
+    const stg = t.closest('[data-show-gift]'); if (stg) return showGift(stg.dataset.showGift);
+    const rb = t.closest('[data-rebook]'); if (rb) { const sv = SITE.services.find((x) => rb.dataset.rebook.startsWith(x.name) && x.mode === 'online'); return openBooking(sv ? { serviceId: sv.id } : {}); }
     const bg = t.closest('[data-book-gift]');
     if (bg) { openBooking(); bk.form.gift_code = bg.dataset.bookGift; api('/api/giftcards/check', { code: bg.dataset.bookGift }).then((g) => (bk.gift = g)).catch(() => {}); return; }
     if (t.closest('[data-print]')) return window.print();
@@ -494,6 +564,7 @@ function bind() {
   document.addEventListener('submit', async (e) => {
     if (e.target.id === 'bkForm') { e.preventDefault(); submitBooking(); }
     if (e.target.id === 'gfForm') { e.preventDefault(); submitGift(); }
+    if (['loginForm', 'registerForm', 'profileForm'].includes(e.target.id)) { e.preventDefault(); accountSubmit(e.target); }
     if (e.target.id === 'wdForm') {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -528,6 +599,7 @@ async function start() {
   try { SITE = await api('/api/site'); }
   catch { $('#ritualList').innerHTML = '<p class="it">No pudimos cargar los servicios. Recargá la página.</p>'; return; }
   renderHero(); bindHero(); renderSections(); onScroll();
+  try { ACC = await api('/api/account/me'); } catch { ACC = null; }
   if (!(await handleReturn())) route();
   window.addEventListener('casa-refresh', async () => { try { SITE = await api('/api/site'); renderSections(); } catch {} });
 }

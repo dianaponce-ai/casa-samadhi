@@ -94,3 +94,17 @@ test('emails automáticos: seña pendiente, horario liberado, gracias, agenda di
   assert.equal(t.sent, 17);
   assert.ok(env.sent.filter((m) => m.to === 'yo@ejemplo.com').every((m) => m.subject.startsWith('[Prueba]')));
 });
+
+test('cuentas: registro, ingreso, mis turnos y el equipo entra al panel desde el mismo formulario', async () => {
+  const st = seedState(), env = makeEnv();
+  const reg = await handle(st, env, { method: 'POST', path: '/api/account/register', query: {}, body: { name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', password: 'claveclave' } });
+  assert.equal(reg.customerSession.customer_id, 1);
+  const customer = st.customers[0];
+  await handle(st, env, { method: 'POST', path: '/api/bookings', query: {}, body: { service_id: 1, date: '2026-11-04', time: '10:00', ...who }, customer });
+  const me = (await handle(st, env, { method: 'GET', path: '/api/account/me', query: {}, body: {}, customer })).body;
+  assert.equal(me.upcoming.length, 1);
+  await assert.rejects(handle(st, env, { method: 'POST', path: '/api/account/login', query: {}, body: { email: 'ana@ejemplo.com', password: 'mal' } }), (e) => e.status === 401);
+  st.staff.push({ id: 1, email: 'a@a.com', name: 'A', role: 'admin', password_hash: 'x$clave1234' });
+  const s = await handle(st, env, { method: 'POST', path: '/api/account/login', query: {}, body: { email: 'a@a.com', password: 'clave1234' } });
+  assert.equal(s.session.staff_id, 1);
+});

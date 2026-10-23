@@ -7,9 +7,20 @@ Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/sam
 - **Turnos online con seña**: la clienta elige servicio, día y horario libre, paga la seña con Mercado Pago y recibe la confirmación por email. Puede cancelar desde el link del email hasta 24 h antes.
 - **Por WhatsApp**: las terapias sin precio fijo (Reiki, Barras de Access, armonización, tarot) se consultan con un botón que abre WhatsApp con el mensaje escrito.
 - **Gift cards**: se compran online (un ritual o un monto), llegan por email con un código y se usan al reservar. También se pueden emitir en la casa desde el panel.
+- **Mi cuenta**: las clientas se registran, ven sus próximos turnos, el historial y sus gift cards, cancelan y reservan de nuevo con los datos ya cargados.
 - **Panel** (`/admin`): agenda por día y por espacio, turnos, clientas, servicios y precios, horarios y bloqueos (feriados, vacaciones), gift cards, eventos, textos, emails, arrepentimientos y usuarios (Administración y Recepción).
 - **Avisos automáticos**: confirmación, recordatorio 24 h antes, cancelación, gift card comprada y recibida.
 - Legales argentinos: Botón de arrepentimiento, leyenda AAIP y enlace a Defensa del Consumidor.
+
+## Usuarios de prueba
+| Rol | Email | Contraseña |
+|---|---|---|
+| Administración | admin@casasamadhi.demo | CasaSamadhi.Admin26 |
+| Recepción | recepcion@casasamadhi.demo | CasaSamadhi.Recep26 |
+| Clienta | clienta@casasamadhi.demo | Clienta.Samadhi26 |
+
+Se ingresa desde el ícono de la persona (**Mi cuenta**): la clienta ve sus turnos y gift cards; el equipo entra al panel. También en `/admin`.
+En la demo de Vercel ya vienen cargados. En el servidor real se crean con `npm run demo-users` y **se borran antes de abrir al público** con `npm run demo-users -- --borrar`.
 
 ## Probarlo en tu compu
 ```bash
