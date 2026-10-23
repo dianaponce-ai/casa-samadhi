@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Casa Samadhi · Café & Spa en La Plata</title>
+<meta name="description" content="Casa Samadhi: head spa, masajes, manicuría, terapias holísticas y cafetería en La Plata. Reservá tu turno online o regalá una gift card.">
+<meta name="theme-color" content="#f4efe6">
+<meta property="og:title" content="Casa Samadhi · Café & Spa">
+<meta property="og:description" content="Un espacio para desconectar. Head spa, manicuría, terapias y café en La Plata.">
+<meta property="og:image" content="/media/headspa-ritual.webp">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%234c5a3d'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' fill='%23f4efe6' text-anchor='middle'%3ECS%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="/assets/spa.css">
+</head>
+<body>
+<!--BODY-->
+<div class="announce"><div class="wrap caps" id="announce">Head spa · Manicuría · Terapias · Cafetería</div></div>
+<header class="top">
+  <div class="wrap">
+    <button class="icon-btn" id="menuBtn" aria-label="Abrir menú"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg></button>
+    <a class="logo" href="#" id="logoBtn" aria-label="Casa Samadhi, inicio"><span class="w">CASA SAMADHI</span><span class="s">CAFÉ &amp; SPA</span></a>
+    <div class="tools">
+      <a class="store-link" id="storeLink" href="#" target="_blank" rel="noopener"><span>Tienda</span><svg viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+      <button class="icon-btn" data-gift aria-label="Gift cards"><svg viewBox="0 0 24 24"><rect x="3.5" y="9" width="17" height="11.5"/><path d="M2.5 9h19v-3h-19zM12 6v14.5M12 6c-1.5-3.5-6-3.5-5 0M12 6c1.5-3.5 6-3.5 5 0"/></svg></button>
+      <a class="icon-btn" id="waTop" href="#" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24"><path d="M4 20l1.2-3.6A8 8 0 1 1 8 19z"/><path d="M9 9.5c.3 2.2 2.3 4.3 4.6 4.8l1-1.1 2 .9c-.2 1-.9 1.8-2 1.8-3.6-.2-6.6-3.2-6.8-6.8 0-1.1.8-1.8 1.8-2l.9 2z"/></svg></a>
+      <button class="btn solid sm hbook" data-book>Reservar</button>
+    </div>
+  </div>
+</header>
+
+<main id="home">
+<section class="hero" id="hero" aria-roledescription="carrusel" aria-label="Casa Samadhi">
+  <div class="slides" id="slides"></div>
+  <div class="side-mark caps">Casa · Samadhi</div>
+  <nav class="vnav" aria-label="Fotos">
+    <button class="arrow" id="heroUp" aria-label="Anterior"><svg viewBox="0 0 14 14"><path d="M2 9l5-5 5 5"/></svg></button>
+    <ol id="heroDots"></ol>
+    <button class="arrow" id="heroDown" aria-label="Siguiente"><svg viewBox="0 0 14 14"><path d="M2 5l5 5 5-5"/></svg></button>
+    <span class="count money" id="heroCount"></span>
+  </nav>
+  <div class="scroll-cue">Rituales</div>
+</section>
+
+<section class="pillars" aria-label="La casa">
+  <div class="wrap">
+    <div class="intro">
+      <img class="ornament" src="/media/logo-casa.png" alt="" width="220" height="190">
+      <p class="lead" id="lead">Un espacio para desconectar.<br><span>Café, spa &amp; momentos para vos.</span></p>
+    </div>
+    <div class="pillar-row">
+      <a href="#rituales" class="pillar"><span class="n">01</span><span class="t">Head spa &amp; masajes</span><span class="d">Rituales de agua, aromas y pindas</span></a>
+      <a href="#manicuria" class="pillar"><span class="n">02</span><span class="t">Manicuría</span><span class="d">Con café, oráculo y spa de manos</span></a>
+      <a href="#terapias" class="pillar"><span class="n">03</span><span class="t">Terapias</span><span class="d">Reiki, Barras de Access, armonización</span></a>
+      <a href="#cafe" class="pillar"><span class="n">04</span><span class="t">Cafetería</span><span class="d">Meriendas, talleres y encuentros</span></a>
+    </div>
+  </div>
+</section>
+
+<section class="rituals" id="rituales" aria-labelledby="ritTitle">
+  <div class="wrap">
+    <div class="sec-head"><div class="caps">Rituales</div><h2 id="ritTitle">Head spa &amp; masajes</h2><p class="it" id="ritIntro"></p></div>
+    <div class="ritual-list" id="ritualList"></div>
+  </div>
+</section>
+
+<section class="band" id="ritual-band">
+  <div class="bg" id="bandBg"><img src="/media/headspa-joya.webp" alt="" loading="lazy"></div>
+  <div class="wrap">
+    <div class="monogram"><span>S</span></div>
+    <div>
+      <div class="q">Desde que entrás, un rato lejos del ruido de todos los días.</div>
+      <div class="caps">Relajación · Aromaterapia · Cuencos · Infusiones</div>
+    </div>
+  </div>
+</section>
+
+<section class="mani" id="manicuria" aria-labelledby="maniTitle">
+  <div class="wrap mani-grid">
+    <figure class="mani-photo"><img src="/media/manicuria-cafe.webp" alt="Manicuría con café de cortesía en Casa Samadhi" loading="lazy"><img class="inset" src="/media/unas.webp" alt="" loading="lazy"></figure>
+    <div>
+      <div class="sec-head left"><div class="caps">Manicuría</div><h2 id="maniTitle">Manos que reflejan tu esencia</h2><p class="it" id="maniIntro"></p></div>
+      <ul class="menu" id="maniMenu"></ul>
+      <p class="menu-note">Incluyen exfoliación e hidratación de manos.</p>
+      <button class="btn solid" data-book-cat="manicuria">Reservar manicuría</button>
+    </div>
+  </div>
+</section>
+
+<section class="therapies" id="terapias" aria-labelledby="terTitle">
+  <div class="wrap">
+    <div class="sec-head"><div class="caps">Terapias holísticas</div><h2 id="terTitle">Cuerpo, mente &amp; energía</h2><p class="it" id="terIntro"></p></div>
+    <div class="ther-grid" id="therList"></div>
+  </div>
+</section>
+
+<section class="cafe" id="cafe" aria-labelledby="cafeTitle">
+  <div class="wrap cafe-grid">
+    <div class="cafe-photos"><img src="/media/cafeteria.webp" alt="Pastelería de la cafetería de Casa Samadhi" loading="lazy"><img src="/media/cafe-plantas.webp" alt="Mesas de la cafetería" loading="lazy"></div>
+    <div class="cafe-copy">
+      <div class="caps">Cafetería &amp; eventos</div>
+      <h2 id="cafeTitle">Un café, una merienda, un encuentro</h2>
+      <p>La casa tiene su cafetería para quedarte un rato antes o después de tu ritual. Y el espacio está disponible para <b>meriendas, reuniones, talleres y coworking</b>.</p>
+      <div class="events" id="events"></div>
+      <a class="btn" id="eventsWa" href="#" target="_blank" rel="noopener">Consultar por un evento</a>
+    </div>
+  </div>
+</section>
+
+<section class="gifts" id="giftcards" aria-labelledby="giftTitle">
+  <div class="wrap gift-grid">
+    <div class="gift-visual" aria-hidden="true">
+      <div class="gcard"><div class="caps">Gift card</div><div class="gname">Casa Samadhi</div><div class="gamount" id="gcardAmount">Un ritual</div><div class="gfoot">Café &amp; Spa · La Plata</div></div>
+    </div>
+    <div>
+      <div class="sec-head left"><div class="caps">Gift cards</div><h2 id="giftTitle">¿No sabés qué regalar?</h2><p class="it">Una pausa. Un mimo. Un ritual de relax.</p></div>
+      <p>Elegí un ritual o un monto, pagala online y te llega al instante por email para regalarla o imprimirla. Vale por 6 meses.</p>
+      <button class="btn solid" data-gift>Regalar una gift card</button>
+    </div>
+  </div>
+</section>
+
+<section class="space" id="espacio" aria-labelledby="spaceTitle">
+  <div class="wrap">
+    <div class="sec-head"><div class="caps">La casa</div><h2 id="spaceTitle">Nuestro espacio</h2><p class="it">Luz natural, plantas, madera y piedras. Pensado para bajar un cambio.</p></div>
+    <div class="mosaic">
+      <img src="/media/camilla.webp" alt="Camilla de masajes" loading="lazy">
+      <img src="/media/deco-cristal.webp" alt="Cristales y flores" loading="lazy">
+      <img src="/media/vitrina.webp" alt="Vitrina de madera" loading="lazy">
+      <img src="/media/headspa-agua.webp" alt="Head spa con cascada de agua" loading="lazy">
+      <img src="/media/barras-access.webp" alt="Sesión de Barras de Access" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section class="faq" id="faq" aria-labelledby="faqTitle">
+  <div class="wrap">
+    <div class="faq-head">
+      <div class="caps">Ayuda</div>
+      <h2 id="faqTitle">Preguntas frecuentes</h2>
+      <p class="it">¿Te quedó alguna duda? Escribinos por <a class="wa-link" href="#" target="_blank" rel="noopener">WhatsApp</a>.</p>
+    </div>
+    <div class="faq-list" id="faqList"></div>
+  </div>
+</section>
+
+<section class="visit" id="visita" aria-labelledby="visitTitle">
+  <div class="wrap visit-grid">
+    <div>
+      <div class="caps">Visitanos</div>
+      <h2 id="visitTitle">Calle 47 N° 679</h2>
+      <p class="it" id="visitAddr">entre 8 y 9 · La Plata</p>
+      <dl class="hours" id="hours"></dl>
+      <div class="visit-actions"><button class="btn solid" data-book>Reservar turno</button><a class="btn" id="mapsLink" href="#" target="_blank" rel="noopener">Cómo llegar</a></div>
+    </div>
+    <a class="store-card" id="storeCard" href="#" target="_blank" rel="noopener">
+      <span class="caps">También en Samadhi</span>
+      <span class="t">Samadhi Style</span>
+      <span class="d">Moda, accesorios y estilo. Lo auténtico también se viste.</span>
+      <span class="go">Ir a la tienda online →</span>
+    </a>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-logo"><img src="/media/logo-casa.png" alt="Casa Samadhi" width="170" height="147"><div class="it">Viví la experiencia Samadhi.</div></div>
+    <div><h4 class="caps">La casa</h4><ul>
+      <li><a href="#rituales">Head spa &amp; masajes</a></li><li><a href="#manicuria">Manicuría</a></li><li><a href="#terapias">Terapias</a></li><li><a href="#cafe">Cafetería &amp; eventos</a></li><li><button type="button" data-gift>Gift cards</button></li>
+    </ul></div>
+    <div><h4 class="caps">Ayuda</h4><ul>
+      <li><button type="button" data-book>Reservar un turno</button></li>
+      <li><a href="#faq">Preguntas frecuentes</a></li>
+      <li><button type="button" data-legal>Términos y condiciones</button></li>
+      <li><button type="button" data-withdraw class="withdraw-link">Botón de arrepentimiento</button></li>
+    </ul></div>
+    <div><h4 class="caps">Contacto</h4><ul id="footContact"></ul></div>
+    <div class="legal"><span>© <span id="year">2026</span> Casa Samadhi</span><a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor/formulario" target="_blank" rel="noopener">Defensa de las y los consumidores. Para reclamos ingrese aquí</a><span>Pagos con Mercado Pago</span></div>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<div class="mnav" id="mnav" aria-label="Menú"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Reservar"></aside>
+<div class="mbar"><button class="btn solid wide" data-book>Reservar turno</button></div>
+<div class="toast" id="toast" role="status"></div>
+<!--/BODY-->
+<script src="/assets/spa.js" type="module"></script>
+</body>
+</html>

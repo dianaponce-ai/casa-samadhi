@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Panel · Casa Samadhi</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form id="loginForm" class="login-box" novalidate>
+    <div class="brand"><span class="w">CASA SAMADHI</span><span class="s">PANEL</span></div>
+    <label class="fl"><span>Email</span><input id="lEmail" type="email" autocomplete="username" required></label>
+    <label class="fl"><span>Contraseña</span><input id="lPass" type="password" autocomplete="current-password" required></label>
+    <p class="err" id="lErr" role="alert"></p>
+    <button class="btn primary" type="submit">Entrar</button>
+    <p class="hint" id="lHint" hidden>Todavía no hay usuarios. Creá el primero con <code>npm run create-admin</code> o completando ADMIN_EMAIL y ADMIN_PASSWORD en el archivo .env.</p>
+  </form>
+</div>
+<div id="app" class="app" hidden>
+  <aside class="side">
+    <div class="brand"><span class="w">CASA SAMADHI</span><span class="s">PANEL</span></div>
+    <nav id="nav" aria-label="Secciones"></nav>
+    <div class="side-foot"><div class="whoami" id="whoami"></div><a href="/" target="_blank" rel="noopener">Ver la web ↗</a><button id="logout">Salir</button></div>
+  </aside>
+  <main class="main" id="view" tabindex="-1"></main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script src="/admin/admin.js" type="module"></script>
+</body>
+</html>

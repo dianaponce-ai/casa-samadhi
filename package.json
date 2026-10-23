@@ -1,0 +1,19 @@
+{
+  "name": "casa-samadhi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Casa Samadhi · Café & Spa: web, turnos online con seña, gift cards y panel.",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "create-admin": "node --disable-warning=ExperimentalWarning scripts/create-admin.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "build:demo": "node --disable-warning=ExperimentalWarning scripts/build-preview.js dist/demo/index.html --standalone"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "nodemailer": "6.10.1"
+  }
+}
