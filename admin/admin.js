@@ -67,10 +67,10 @@ if (!EMBED) window.addEventListener('hashchange', route);
 function route() {
   let [sec = 'agenda', id] = currentHash().split('/');
   if (ADMIN_ONLY.has(sec) && !isAdmin()) sec = 'agenda';
-  renderNav({ turno: 'turnos', giftcard: 'giftcards' }[sec] || sec);
+  renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas' }[sec] || sec);
   const view = $('#view');
   view.innerHTML = '<p class="muted">Cargando…</p>';
-  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers }[sec] || viewAgenda;
+  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers }[sec] || viewAgenda;
   Promise.resolve(fn()).catch((err) => { view.innerHTML = `<div class="notice">${esc(err.message)}</div>`; });
   view.focus({ preventScroll: true });
   if (EMBED) EMBED.scrollTop?.(); else window.scrollTo(0, 0);
@@ -221,17 +221,73 @@ async function viewBooking(id) {
   };
 }
 
-// ── Clientas ─────────────────────────────────────────────
+// ── Clientas (CRM) ───────────────────────────────────────
+const cState = { q: '', segment: '', tag: '', sort: 'last' };
+const dateOnly = (s) => { if (!s) return ''; const [y, m, d] = s.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+const daysAgo = (s) => { if (!s) return ''; const n = Math.round((Date.now() - Date.parse(s.slice(0, 10) + 'T12:00:00-03:00')) / 864e5); return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : n < 60 ? `hace ${n} días` : `hace ${Math.round(n / 30)} meses`; };
 async function viewClients() {
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Clientas</h1><div class="sub">Armado a partir de los turnos</div></div></div><div class="toolbar"><input id="cq" placeholder="Buscar"></div><div id="clist"></div>`;
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Clientas</h1><div class="sub">Todo lo que sabemos de cada clienta: visitas, gasto, tratamientos, preferencias y notas del equipo</div></div></div>
+    <div class="grid g4" id="csum" style="margin-bottom:14px"></div>
+    <div class="toolbar"><input id="cq" placeholder="Buscar por nombre, email, celular o etiqueta" value="${esc(cState.q)}">
+      <select id="cseg"><option value="">Todas</option><option value="loyal">Frecuentes (3+ visitas)</option><option value="new">Nuevas (0–1 visita)</option><option value="inactive">Sin venir hace 60+ días</option><option value="birthday">Cumplen este mes</option></select>
+      <select id="ctag"><option value="">Cualquier etiqueta</option></select>
+      <select id="csort"><option value="last">Última visita</option><option value="spent">Más gasto</option><option value="visits">Más visitas</option><option value="name">Nombre</option></select></div>
+    <div id="clist"><p class="muted">Cargando…</p></div>`;
+  $('#cseg').value = cState.segment; $('#csort').value = cState.sort;
   const load = async () => {
-    const r = await api('/clients?q=' + encodeURIComponent($('#cq').value));
-    $('#clist').innerHTML = r.clients.length ? `<div class="card tablewrap"><table><tr><th>Nombre</th><th>Contacto</th><th>Lo que más se hace</th><th class="r">Visitas</th><th class="r">Próximos</th><th>Último turno</th></tr>
-      ${r.clients.map((c) => `<tr><td>${esc(c.name)}${c.account ? ' <span class="pill s-active">Con cuenta</span>' : ''}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.upcoming}</td><td class="n">${c.last ? shortWhen(c.last) : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty card">Todavía no hay clientas.</div>';
+    const r = await api('/clients?' + new URLSearchParams(cState));
+    const tagSel = $('#ctag'); if (tagSel.options.length === 1) { tagSel.innerHTML += r.tags.map((t) => `<option>${esc(t)}</option>`).join(''); tagSel.value = cState.tag; }
+    const S = r.summary;
+    $('#csum').innerHTML = `<div class="card kpi accent"><div class="l">Clientas</div><div class="v">${S.total}</div></div><div class="card kpi"><div class="l">Volvieron 2+ veces</div><div class="v">${S.returning}</div></div><div class="card kpi"><div class="l">Con cuenta en la web</div><div class="v">${S.withAccount}</div></div><div class="card kpi"><div class="l">Sin venir hace 60+ días</div><div class="v">${S.inactive}</div></div>`;
+    $('#clist').innerHTML = r.clients.length ? `<div class="card tablewrap"><table><tr><th>Clienta</th><th>Contacto</th><th>Lo que más se hace</th><th class="r">Visitas</th><th class="r">Gastado</th><th>Última visita</th><th>Próximo turno</th></tr>
+      ${r.clients.map((c) => `<tr class="click" data-href="clienta/${encodeURIComponent(c.key)}"><td><b>${esc(c.name)}</b>${c.account ? ' <span class="pill s-active">Con cuenta</span>' : ''}${c.tags.map((t) => ` <span class="pill">${esc(t)}</span>`).join('')}${c.hasNotes ? ' <span class="small muted" title="Tiene notas">✎</span>' : ''}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.spent ? fmt(c.spent) : '—'}</td><td class="n">${c.last ? `${dateOnly(c.last)}<div class="small muted">${daysAgo(c.last)}</div>` : '<span class="muted">—</span>'}</td><td class="n">${c.next ? shortWhen(c.next) : '<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>
+      <p class="small muted" style="margin-top:8px">${r.clients.length} de ${r.total} clientas</p>` : '<div class="empty card">No hay clientas con ese filtro.</div>';
+    $$('#clist tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   };
-  let t; $('#cq').oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };
+  let t; $('#cq').oninput = () => { clearTimeout(t); t = setTimeout(() => { cState.q = $('#cq').value; load(); }, 250); };
+  $('#cseg').onchange = (e) => { cState.segment = e.target.value; load(); };
+  $('#ctag').onchange = (e) => { cState.tag = e.target.value; load(); };
+  $('#csort').onchange = (e) => { cState.sort = e.target.value; load(); };
   load();
 }
+async function viewClient(key) {
+  const d = await api('/clients/ficha?key=' + encodeURIComponent(key));
+  const c = d.client, m = d.crm;
+  const phone = String(c.phone || '').replace(/\D/g, '');
+  const wa = phone ? `https://wa.me/${phone.startsWith('54') ? phone : '549' + phone}?text=${encodeURIComponent(`Hola ${c.name.split(' ')[0]}! Te escribimos de Casa Samadhi 🌿`)}` : '';
+  const stat = (l, v, sub = '') => `<div class="card kpi"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
+  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#clientas">← Clientas</a><h1 style="margin-top:6px">${esc(c.name)}</h1><div class="sub">${c.account ? `Con cuenta en la web desde ${dateOnly(c.account_since)}` : 'Sin cuenta en la web (reservó como invitada)'}${c.first ? ` · Clienta desde ${dateOnly(c.first)}` : ''}</div></div>
+      <div class="actions">${wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}<a class="btn primary" href="#agenda">Nuevo turno</a></div></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      ${stat('Visitas realizadas', c.visits, c.everyDays ? `vuelve cada ${c.everyDays} días aprox.` : '')}
+      ${stat('Gastado en la casa', fmt(c.spent), c.visits ? `ticket promedio ${fmt(c.avgTicket)}` : '')}
+      ${stat('Última visita', c.last ? dateOnly(c.last) : '—', c.last ? `${daysAgo(c.last)} · ${esc(c.lastService)}` : 'todavía no vino')}
+      ${stat('Próximo turno', c.next ? shortWhen(c.next) : '—', c.next ? esc(c.nextService) : '')}
+    </div>
+    <div class="grid g2">
+      <div class="grid" style="align-content:start">
+        <div class="card form"><h2>Ficha</h2>
+          <dl class="kv"><dt>Celular</dt><dd>${esc(c.phone || '—')}</dd><dt>Email</dt><dd>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</dd><dt>Le gusta</dt><dd>${d.services.slice(0, 3).map((x) => `${esc(x.name)} (${x.n})`).join(' · ') || '—'}</dd><dt>Cancelaciones</dt><dd>${c.cancelled}${c.noShows ? ` · no vino ${c.noShows} vez${c.noShows === 1 ? '' : 'es'}` : ''}</dd></dl>
+          <label class="fl"><span>Cumpleaños</span><input type="date" id="crmBd" value="${esc(m.birthday)}"></label>
+          <div class="fl"><span>Etiquetas</span><div class="chips">${d.tags.map((t) => `<label><input type="checkbox" data-tag="${esc(t)}" ${m.tags.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div>
+          <label class="fl"><span>Preferencias (aromas, presión del masaje, alergias, bebida…)</span><textarea id="crmPref" rows="3" placeholder="Ej.: prefiere aceite de lavanda, presión suave, té verde sin azúcar">${esc(m.preferences)}</textarea></label>
+          <label class="fl"><span>Notas del equipo (solo las ve el equipo)</span><textarea id="crmNotes" rows="5" placeholder="Lo que conviene recordar para la próxima visita">${esc(m.notes)}</textarea></label>
+          <div class="actions"><span class="small muted" id="crmUpd">${m.updated_at ? `Actualizado ${at(m.updated_at)}${m.updated_by ? ' por ' + esc(m.updated_by) : ''}` : ''}</span><button class="btn primary" id="crmSave">Guardar ficha</button></div>
+        </div>
+        ${d.giftcards.length ? `<div class="card"><h2>Gift cards</h2><table>${d.giftcards.map((g) => `<tr class="click" data-href="giftcard/${g.id}"><td>${esc(g.code)}<div class="small muted">${g.role} · ${dateOnly(g.created_at)}</div></td><td>${esc(g.service_name || fmt(g.amount))}</td><td>${pill(g.status, GSTATUS)}</td><td class="r n">${g.status === 'active' ? fmt(g.balance) : ''}</td></tr>`).join('')}</table></div>` : ''}
+      </div>
+      <div class="card"><h2>Historial de turnos</h2>${d.bookings.length ? `<table>${d.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${shortWhen(b.start)}<div class="small muted">${b.start.slice(0, 4)}</div></td><td>${esc(b.service_name)}${b.notes ? `<div class="small muted">“${esc(b.notes)}”</div>` : ''}</td><td>${pill(b.status)}</td><td class="r n">${b.price ? fmt(b.price) : '—'}</td></tr>`).join('')}</table>` : '<p class="muted">Sin turnos.</p>'}</div>
+    </div>`;
+  $$('#view tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+  $('#crmSave').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('/clients/ficha', { method: 'PATCH', body: { key: c.key, birthday: $('#crmBd').value, preferences: $('#crmPref').value, notes: $('#crmNotes').value, tags: $$('[data-tag]').filter((x) => x.checked).map((x) => x.dataset.tag) } });
+      toast('Ficha guardada'); viewClient(key);
+    } catch (err) { toast(err.message, true); e.target.disabled = false; }
+  };
+}
+
 
 // ── Servicios ────────────────────────────────────────────
 const MODES = { online: 'Reserva online con seña', whatsapp: 'Se coordina por WhatsApp', menu: 'Solo en la lista de precios' };

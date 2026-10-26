@@ -127,3 +127,31 @@ test('recuperar contraseña por email (clienta y equipo)', async () => {
   env.advance(61 * 60e3);
   await assert.rejects(acct('/api/account/reset', { token: t2, password: 'clavelarga1' }), (e) => e.status === 410);
 });
+
+test('CRM: ficha de clienta, notas y la cuenta recuerda la última visita', async () => {
+  const st = seedState(), env = makeEnv();
+  const staff = { id: 1, name: 'Recepción', role: 'staff' };
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who, notes: 'Presión suave' });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
+  const id = st.bookings[0].id;
+  env.advance(3 * 864e5);
+  await call(st, env, 'PATCH', '/api/admin/bookings/' + id, { status: 'completed' }, staff);
+  const list = await call(st, env, 'GET', '/api/admin/clients', undefined, staff);
+  assert.equal(list.summary.total, 1);
+  const c = list.clients[0];
+  assert.equal(c.key, 'ana@ejemplo.com');
+  assert.equal(c.visits, 1);
+  assert.equal(c.spent, 55000);
+  assert.equal(c.lastService, st.bookings[0].service_name);
+  const saved = await call(st, env, 'PATCH', '/api/admin/clients/ficha', { key: c.key, notes: 'Le gusta la lavanda', tags: ['VIP'], birthday: '1990-11-20' }, staff);
+  assert.equal(saved.crm.notes, 'Le gusta la lavanda');
+  assert.deepEqual(saved.crm.tags, ['VIP']);
+  assert.equal(saved.crm.updated_by, 'Recepción');
+  assert.equal((await call(st, env, 'GET', '/api/admin/clients?segment=birthday', undefined, staff)).clients.length, 1);
+  assert.equal((await call(st, env, 'GET', '/api/admin/clients?tag=VIP', undefined, staff)).clients.length, 1);
+  // La clienta crea su cuenta con el mismo email: ve su última visita y lo que contó
+  const acc = await call(st, env, 'POST', '/api/account/register', { name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', password: 'clave-segura' });
+  assert.equal(acc.stats.visits, 1);
+  assert.equal(acc.stats.lastVisit.service_name, st.bookings[0].service_name);
+  assert.equal(acc.stats.lastNotes, 'Presión suave');
+});

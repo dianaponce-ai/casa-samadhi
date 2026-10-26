@@ -18,9 +18,10 @@ function ensure(st) {
   st.meta = st.meta || { lastDaily: '' };
   st.customers = st.customers || [];
   st.resets = st.resets || [];
+  st.crm = st.crm || {};
   st.ids.customer = st.ids.customer || 0;
 }
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets'];
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción' };
 export const BOOKING_STATUS = { pending_payment: 'Esperando seña', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 export const GIFT_STATUS = { pending_payment: 'Esperando pago', active: 'Activa', used: 'Usada', expired: 'Vencida', cancelled: 'Anulada' };
@@ -33,7 +34,7 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '' }, customers: [], resets: [],
+    meta: { lastDaily: '' }, customers: [], resets: [], crm: {},
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, bookingNumber: 1000 },
   };
@@ -393,21 +394,79 @@ function dashboard(st, env) {
     mock: !!env.mock,
   };
 }
-function clients(st, q) {
+// ── Clientas (CRM) ───────────────────────────────────────
+// Cada clienta se identifica por su email (o por su celular si reservó sin email).
+const clientKey = (b) => (b.email ? String(b.email).toLowerCase() : 'tel:' + digits(b.phone));
+const CRM_TAGS = ['VIP', 'Frecuente', 'Nueva', 'Cumpleaños', 'Regalo', 'Sensible', 'Embarazada', 'No contactar'];
+function clientRows(st, env) {
   const map = new Map();
-  for (const b of [...st.bookings].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    const k = b.email || b.phone;
-    const c = map.get(k) || { email: b.email, name: b.name, phone: b.phone, visits: 0, upcoming: 0, last: '', spent: 0, services: {}, account: st.customers?.some((x) => x.email === b.email) };
-    c.name = b.name; c.phone = b.phone || c.phone;
-    if (b.status === 'completed') { c.visits++; c.spent += b.price; }
-    if (['confirmed', 'pending_payment'].includes(b.status)) c.upcoming++;
-    if (b.start > c.last && b.status !== 'expired') c.last = b.start;
+  const nowKey = msToLocal(env.now());
+  for (const b of [...st.bookings].sort((a, b) => a.start.localeCompare(b.start))) {
+    if (b.status === 'expired') continue;
+    const k = clientKey(b);
+    if (k === 'tel:') continue;
+    const c = map.get(k) || { key: k, email: b.email || '', name: b.name, phone: b.phone, visits: 0, upcoming: 0, cancelled: 0, noShows: 0, spent: 0, services: {}, first: '', last: '', lastService: '', next: '', nextService: '', bookings: 0 };
+    c.name = b.name || c.name; c.phone = b.phone || c.phone; c.bookings++;
+    if (b.status === 'completed') { c.visits++; c.spent += b.price; if (!c.first) c.first = b.start; c.last = b.start; c.lastService = b.service_name; }
+    if (b.status === 'cancelled') c.cancelled++;
+    if (b.status === 'no_show') c.noShows++;
+    if (['confirmed', 'pending_payment', 'attention'].includes(b.status) && b.start >= nowKey.slice(0, 10)) { c.upcoming++; if (!c.next) { c.next = b.start; c.nextService = b.service_name; } }
     c.services[b.service_name] = (c.services[b.service_name] || 0) + 1;
     map.set(k, c);
   }
-  let list = [...map.values()].map((c) => ({ ...c, top: Object.entries(c.services).sort((a, b) => b[1] - a[1])[0]?.[0] || '' }));
-  if (q) { const t = q.toLowerCase(); list = list.filter((c) => (c.name + ' ' + c.email + ' ' + c.phone).toLowerCase().includes(t)); }
-  return list.sort((a, b) => b.last.localeCompare(a.last)).slice(0, 300);
+  return [...map.values()].map((c) => {
+    const crm = st.crm[c.key] || {};
+    const acc = st.customers.find((x) => x.email === c.email);
+    return { ...c, top: Object.entries(c.services).sort((a, b) => b[1] - a[1])[0]?.[0] || '', account: !!acc, tags: crm.tags || [], birthday: crm.birthday || '', hasNotes: !!crm.notes };
+  });
+}
+function clients(st, env, q = {}) {
+  let list = clientRows(st, env);
+  if (q.q) { const t = String(q.q).toLowerCase(); list = list.filter((c) => (c.name + ' ' + c.email + ' ' + c.phone + ' ' + c.tags.join(' ')).toLowerCase().includes(t)); }
+  if (q.tag) list = list.filter((c) => c.tags.includes(q.tag));
+  const nowKey = msToLocal(env.now()).slice(0, 10);
+  if (q.segment === 'inactive') list = list.filter((c) => c.last && !c.next && c.last.slice(0, 10) < addDays(nowKey, -60));
+  if (q.segment === 'birthday') { const m = nowKey.slice(5, 7); list = list.filter((c) => c.birthday && c.birthday.slice(5, 7) === m); }
+  if (q.segment === 'new') list = list.filter((c) => c.visits <= 1);
+  if (q.segment === 'loyal') list = list.filter((c) => c.visits >= 3);
+  const sorts = { last: (a, b) => (b.last || b.next).localeCompare(a.last || a.next), spent: (a, b) => b.spent - a.spent, visits: (a, b) => b.visits - a.visits, name: (a, b) => a.name.localeCompare(b.name) };
+  list.sort(sorts[q.sort] || sorts.last);
+  const all = clientRows(st, env);
+  return { clients: list.slice(0, 500), total: all.length, tags: CRM_TAGS,
+    summary: { total: all.length, withAccount: all.filter((c) => c.account).length, returning: all.filter((c) => c.visits >= 2).length, inactive: all.filter((c) => c.last && !c.next && c.last.slice(0, 10) < addDays(nowKey, -60)).length, spent: all.reduce((a, c) => a + c.spent, 0) } };
+}
+function clientDetail(st, env, key) {
+  const k = String(key || '').toLowerCase();
+  const row = clientRows(st, env).find((c) => c.key === k);
+  if (!row) fail(404, 'No encontramos esa clienta.');
+  const list = st.bookings.filter((b) => clientKey(b) === k && b.status !== 'expired').sort((a, b) => b.start.localeCompare(a.start));
+  const done = list.filter((b) => b.status === 'completed').map((b) => b.start.slice(0, 10)).sort();
+  const gaps = done.slice(1).map((d, i) => (Date.parse(d) - Date.parse(done[i])) / 864e5);
+  const acc = st.customers.find((x) => x.email === row.email);
+  const gifts = st.giftcards.filter((g) => g.status !== 'pending_payment' && row.email && (g.buyer_email === row.email || g.to_email === row.email));
+  const crm = st.crm[k] || {};
+  return {
+    client: { ...row, account_since: acc?.created_at || '', avgTicket: row.visits ? Math.round(row.spent / row.visits) : 0, everyDays: gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0 },
+    crm: { notes: crm.notes || '', preferences: crm.preferences || '', birthday: crm.birthday || '', tags: crm.tags || [], updated_at: crm.updated_at || '', updated_by: crm.updated_by || '' },
+    services: Object.entries(row.services).sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n })),
+    bookings: list.map(adminBooking),
+    giftcards: gifts.map((g) => ({ id: g.id, code: g.code, amount: g.amount, balance: g.balance, status: g.status, status_label: GIFT_STATUS[g.status], service_name: g.service_name, role: g.to_email === row.email ? 'Recibida' : 'Comprada', created_at: g.created_at })),
+    tags: CRM_TAGS,
+  };
+}
+function saveClient(st, env, key, body, staff) {
+  const k = String(key || '').toLowerCase();
+  if (!clientRows(st, env).some((c) => c.key === k)) fail(404, 'No encontramos esa clienta.');
+  const cur = st.crm[k] || {};
+  const bd = String(body.birthday || '').slice(0, 10);
+  st.crm[k] = {
+    notes: body.notes !== undefined ? clean(body.notes, 2000) : cur.notes || '',
+    preferences: body.preferences !== undefined ? clean(body.preferences, 500) : cur.preferences || '',
+    birthday: body.birthday !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(bd) ? bd : '') : cur.birthday || '',
+    tags: Array.isArray(body.tags) ? [...new Set(body.tags.map((t) => clean(t, 30)).filter(Boolean))].slice(0, 12) : cur.tags || [],
+    updated_at: iso(env), updated_by: staff?.name || staff?.email || '',
+  };
+  return clientDetail(st, env, k);
 }
 
 // ── Router ───────────────────────────────────────────────
@@ -544,7 +603,9 @@ export async function handle(st, env, req) {
       return ok({ booking: adminBooking(b) });
     }
   }
-  if (A[0] === 'clients' && method === 'GET') return ok({ clients: clients(st, q.q) });
+  if (A[0] === 'clients' && method === 'GET' && !A[1]) return ok(clients(st, env, q));
+  if (A[0] === 'clients' && A[1] === 'ficha' && method === 'GET') return ok(clientDetail(st, env, q.key));
+  if (A[0] === 'clients' && A[1] === 'ficha' && method === 'PATCH') return ok(saveClient(st, env, body.key, body, staff));
 
   if (A[0] === 'services') {
     if (method === 'GET') return ok({ services: [...st.services].sort((a, b) => a.position - b.position), categories: st.settings.categories, resources: st.settings.resources });
@@ -739,7 +800,12 @@ function accountData(st, env, c) {
   const upcoming = mine.filter((b) => b.start >= nowKey.slice(0, 10) && ['confirmed', 'pending_payment', 'attention'].includes(b.status)).sort((a, b) => a.start.localeCompare(b.start));
   const past = mine.filter((b) => !upcoming.includes(b)).sort((a, b) => b.start.localeCompare(a.start)).slice(0, 30);
   const gifts = st.giftcards.filter((g) => g.status !== 'pending_payment' && (g.buyer_email === c.email || g.to_email === c.email)).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  return { customer: customerView(c), upcoming: upcoming.map((b) => publicBooking(st, env, b)), past: past.map((b) => publicBooking(st, env, b)), giftcards: gifts.map(publicGift) };
+  const done = mine.filter((b) => b.status === 'completed' && b.start <= nowKey).sort((a, b) => b.start.localeCompare(a.start));
+  const last = done[0];
+  const lastNotes = [...mine].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((b) => b.notes)?.notes || '';
+  const fav = Object.entries(done.reduce((m, b) => ((m[b.service_name] = (m[b.service_name] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+  return { customer: customerView(c), upcoming: upcoming.map((b) => publicBooking(st, env, b)), past: past.map((b) => publicBooking(st, env, b)), giftcards: gifts.map(publicGift),
+    stats: { visits: done.length, lastVisit: last ? { start: last.start, when: longDate(last.start), service_name: last.service_name } : null, favorite: fav, lastNotes } };
 }
 async function accountRoute(st, env, method, action, body, req) {
   const email = String(body.email || '').toLowerCase().trim();

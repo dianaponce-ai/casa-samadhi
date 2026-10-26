@@ -213,7 +213,7 @@ const head = (title, back) => `<div class="dhead">${back ? `<button class="back"
 // ── Reserva ──────────────────────────────────────────────
 const bk = { step: 1, service: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '' };
 function openBooking({ serviceId = null, category = null } = {}) {
-  if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone };
+  if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone, notes: bk.form.notes || ACC.stats?.lastNotes || '' };
   Object.assign(bk, { step: serviceId ? 2 : 1, service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
   setHash('#reservar');
   renderBooking(true);
@@ -237,7 +237,9 @@ function renderBooking(open = false) {
   if (bk.step === 1) {
     const groups = SITE.categories.map((c) => ({ c, list: SITE.services.filter((s) => s.category === c.key && s.mode === 'online') })).filter((g) => g.list.length && (!bk.filter || g.c.key === bk.filter));
     const waOnly = SITE.services.filter((s) => s.mode === 'whatsapp' && (!bk.filter || s.category === bk.filter));
-    body = groups.map((g) => `<div class="svc-group"><div class="step-t">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="n">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''}</span><span class="p">${fmt(s.price)}</span><span class="m">${durTxt(s.duration)}</span></button>`).join('')}</div>`).join('')
+    const lv = ACC?.stats?.lastVisit;
+    const again = lv && SITE.services.find((x) => lv.service_name.startsWith(x.name) && x.mode === 'online');
+    body = (ACC ? `<div class="sel-sum welcome"><span class="n">Hola de nuevo, ${esc(ACC.customer.name.split(' ')[0])}</span>${lv ? `<span class="w">Tu última visita fue ${esc(lv.when)}: ${esc(lv.service_name)}.</span>` : '<span class="w">Tus datos ya están cargados para reservar.</span>'}${again && !bk.filter ? `<button class="btn sm" data-pick="${again.id}" style="justify-self:start;margin-top:6px">Repetir ${esc(again.name)}</button>` : ''}</div>` : '') + groups.map((g) => `<div class="svc-group"><div class="step-t">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="n">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''}</span><span class="p">${fmt(s.price)}</span><span class="m">${durTxt(s.duration)}</span></button>`).join('')}</div>`).join('')
       + (bk.filter ? `<p class="note" style="margin-top:16px"><button class="link-btn" data-allsvc>Ver todos los servicios</button></p>` : '')
       + (waOnly.length ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero consultar por una terapia.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
   } else if (bk.step === 2) {
@@ -258,7 +260,7 @@ function renderBooking(open = false) {
         <div class="step-t" style="margin-bottom:0">Tus datos</div>
         ${field('name', 'Nombre y apellido', 'text', 'autocomplete="name" autofocus')}
         <div class="row2">${field('email', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('phone', 'Celular (WhatsApp)', 'tel', 'autocomplete="tel" inputmode="tel"')}</div>
-        <div class="fl"><label for="b_notes">¿Algo que debamos saber? (opcional)</label><textarea id="b_notes" name="notes" rows="2" placeholder="Alergias, embarazo, preferencias…">${esc(f.notes || '')}</textarea></div>
+        <div class="fl"><label for="b_notes">¿Algo que debamos saber? (opcional)</label><textarea id="b_notes" name="notes" rows="2" placeholder="Alergias, embarazo, preferencias…">${esc(f.notes || '')}</textarea>${ACC && f.email === ACC.customer.email ? '<span class="note">Recordamos tus datos y lo que nos contaste la última vez. Cambialo si hace falta.</span>' : ''}</div>
         <div class="gift-apply"><div class="fl"><label for="b_gift">¿Tenés una gift card?</label><input id="b_gift" name="gift_code" value="${esc(f.gift_code || bk.gift?.code || '')}" placeholder="CS-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase" ${bk.giftErr ? 'aria-invalid="true"' : ''}>${bk.giftErr ? `<span class="err">${esc(bk.giftErr)}</span>` : ''}</div><button class="btn sm" type="button" data-gift-check>${bk.gift ? 'Quitar' : 'Aplicar'}</button></div>
         ${bk.gift ? `<p class="gift-ok">Gift card aplicada: se descuentan ${fmt(giftAmt)} (saldo ${fmt(bk.gift.balance)}).</p>` : ''}
         <label class="check"><input type="checkbox" name="accept" ${f.accept ? 'checked' : ''}><span>Acepto los <button type="button" class="link-btn" data-legal style="font-size:inherit;letter-spacing:0;text-transform:none">términos y la política de cancelación</button>: puedo cancelar o reprogramar hasta ${SITE.booking.cancelHours} horas antes.</span></label>
@@ -482,7 +484,9 @@ function renderAccount() {
   } else {
     const c = ACC.customer;
     const card = (b, past) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(b.service_name)}</b><br>${esc(cap(b.when))}${past ? ` · ${esc(b.status_label)}` : b.status !== 'confirmed' ? ` · ${esc(b.status_label)}` : ''}</dt><dd>${past ? `<button class="btn sm" data-rebook="${esc(b.service_name)}">Reservar de nuevo</button>` : `<button class="btn sm" data-show-turno="${esc(b.token)}">Ver</button>`}</dd></div></div>`;
+    const S = ACC.stats || {};
     body = `<div class="status" style="gap:6px"><div class="big">Hola, ${esc(c.name.split(' ')[0])}</div><p class="note">${esc(c.email)} · ${esc(c.phone)}</p></div>
+      ${S.lastVisit ? `<div class="sel-sum welcome" style="margin-top:14px"><span class="w">Tu última visita</span><span class="n">${esc(cap(S.lastVisit.when))}</span><span class="w">${esc(S.lastVisit.service_name)} · ${S.visits} visita${S.visits === 1 ? '' : 's'} en Casa Samadhi${S.favorite && S.visits > 1 ? ` · tu favorito: ${esc(S.favorite)}` : ''}</span><button class="btn sm" data-rebook="${esc(S.lastVisit.service_name)}" style="justify-self:start;margin-top:6px">Reservar lo mismo</button></div>` : ''}
       <div class="step-t">Próximos turnos</div>${ACC.upcoming.length ? ACC.upcoming.map((b) => card(b)).join('') : '<p class="empty-slots">No tenés turnos por delante.</p>'}
       <button class="btn solid sm" data-book style="margin-top:10px">Reservar un turno</button>
       ${ACC.giftcards.length ? `<div class="step-t" style="margin-top:26px">Gift cards</div>${ACC.giftcards.map((g) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(g.service_name || fmt(g.amount))}</b> · ${esc(g.status_label)}<br>${esc(g.code || '')}${g.status === 'active' ? ` · saldo ${fmt(g.balance)}` : ''}</dt><dd><button class="btn sm" data-show-gift="${esc(g.token)}">Ver</button></dd></div></div>`).join('')}` : ''}
