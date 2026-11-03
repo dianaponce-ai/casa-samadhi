@@ -36,7 +36,7 @@ export const SERVICES = [
   { slug: 'retirado-nuevo-servicio', category: 'manicuria', resource: 'manicuria', mode: 'menu', name: 'Retirado + nuevo servicio', tag: 'Se suma al servicio nuevo', duration: 0, price: 1500 },
   { slug: 'retirado-otro-salon', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de otro salón', duration: 30, price: 9000 },
 
-  { slug: 'reiki', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Reiki', tag: 'Energía que sana, equilibra y transforma', duration: 60, price: null, image: 'media/deco-cristal.webp',
+  { slug: 'reiki', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Reiki', tag: 'Energía que sana, equilibra y transforma', duration: 60, price: null, image: 'https://images.unsplash.com/photo-1757066033647-366cc10e0de2?auto=format&fit=crop&w=1200&q=75',
     short: 'Armoniza cuerpo, mente y espíritu, libera bloqueos, reduce el estrés y eleva tu bienestar integral.' },
   { slug: 'armonizacion', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Armonización facial y corporal', tag: 'Belleza que refleja tu equilibrio interior', duration: 60, price: null, image: 'media/camilla.webp',
     short: 'Técnica holística que trabaja los músculos del rostro y del cuerpo: libera tensiones, mejora la circulación y estimula tu energía vital.',
@@ -55,7 +55,8 @@ export const SITE = {
   subtitle: 'Café, spa & momentos para vos',
   address: 'Calle 47 N° 679, entre 8 y 9',
   city: 'La Plata, Buenos Aires',
-  whatsapp: '11 4928-2503',
+  whatsapp: '221 504-6554', // consultas generales, manicuría, terapias, eventos y el local
+  ritualsWhatsapp: '11 4928-2503', // solo head spa y masajes
   eventsWhatsapp: '221 504-6554',
   instagram: 'casasamadhistyle',
   storeInstagram: 'samadhistyle',

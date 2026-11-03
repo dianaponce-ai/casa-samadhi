@@ -559,7 +559,8 @@ async function viewSettings() {
     <div class="grid g2">
       <div class="card form"><h2>La casa</h2>${inp('site.name', 'Nombre', s.name)}${inp('site.tagline', 'Frase', s.tagline)}${inp('site.announcement', 'Barra de anuncios', s.announcement)}
         <div class="row">${inp('site.address', 'Dirección', s.address)}${inp('site.city', 'Ciudad', s.city)}</div>
-        <div class="row">${inp('site.whatsapp', 'WhatsApp de turnos', s.whatsapp)}${inp('site.eventsWhatsapp', 'WhatsApp de eventos', s.eventsWhatsapp)}</div>
+        <div class="row">${inp('site.whatsapp', 'WhatsApp general y del local', s.whatsapp)}${inp('site.ritualsWhatsapp', 'WhatsApp de head spa y masajes', s.ritualsWhatsapp || '')}</div>
+        <div class="row">${inp('site.eventsWhatsapp', 'WhatsApp de eventos', s.eventsWhatsapp)}</div>
         <div class="row">${inp('site.instagram', 'Instagram', s.instagram)}${inp('site.email', 'Email de contacto', s.email, 'type="email"')}</div>
         ${inp('site.storeUrl', 'Dirección de la tienda Samadhi Style (botón "Tienda")', s.storeUrl, 'type="url"')}</div>
       <div class="card form"><h2>Reservas</h2>

@@ -5,7 +5,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const MEDIA = window.__CASA_MEDIA || ((u) => '/' + String(u || '').replace(/^\//, ''));
+const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -130,17 +130,19 @@ function onScroll() {
 }
 
 // ── Secciones ────────────────────────────────────────────
+// WhatsApp que atiende cada servicio: el propio, el de head spa y masajes, o el general del local.
+const svcWa = (s) => (s && s.whatsapp) || (s && s.category === 'rituales' && SITE.site.ritualsWhatsapp) || SITE.site.whatsapp;
 const svcBySlug = (slug) => SITE.services.find((s) => s.slug === slug);
 const cat = (k) => SITE.categories.find((c) => c.key === k) || {};
 function actionsFor(s) {
   if (s.mode === 'online') return `<button class="btn solid sm" data-book-svc="${s.id}">Reservar</button><button class="btn sm" data-gift-svc="${s.id}">Regalar</button>`;
-  return `<a class="btn sm" href="${wa(s.whatsapp || SITE.site.whatsapp, `Hola! Quiero consultar por ${s.name} en Casa Samadhi.`)}" target="_blank" rel="noopener">Consultar por WhatsApp</a>`;
+  return `<a class="btn sm" href="${wa(svcWa(s), `Hola! Quiero consultar por ${s.name} en Casa Samadhi.`)}" target="_blank" rel="noopener">Consultar por WhatsApp</a>`;
 }
 function renderSections() {
   const S = SITE.site;
   $('#announce').textContent = S.announcement || 'Head spa · Manicuría · Terapias · Cafetería';
   $('#year').textContent = new Date().getFullYear();
-  $('#ritIntro').textContent = cat('rituales').intro || '';
+  $('#ritIntro').innerHTML = esc(cat('rituales').intro || '') + (S.ritualsWhatsapp ? ` <a href="${wa(S.ritualsWhatsapp, 'Hola! Quiero consultar por head spa y masajes.')}" target="_blank" rel="noopener">Consultas: WhatsApp ${esc(S.ritualsWhatsapp)}</a>` : '');
   $('#maniIntro').textContent = cat('manicuria').intro || '';
   $('#terIntro').textContent = cat('terapias').intro || '';
   const rit = SITE.services.filter((s) => s.category === 'rituales');
@@ -177,6 +179,7 @@ function renderSections() {
   $('#footContact').innerHTML = [
     `<li><a href="${maps}" target="_blank" rel="noopener">${esc(S.address)}<br>${esc(S.city)}</a></li>`,
     `<li><a href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp · ${esc(S.whatsapp)}</a></li>`,
+    S.ritualsWhatsapp ? `<li><a href="${wa(S.ritualsWhatsapp, 'Hola! Quiero consultar por head spa y masajes.')}" target="_blank" rel="noopener">Head spa y masajes · ${esc(S.ritualsWhatsapp)}</a></li>` : '',
     `<li><a href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram · @${esc(S.instagram)}</a></li>`,
     S.email ? `<li><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></li>` : '',
     `<li><a href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a></li>`,
@@ -319,7 +322,7 @@ async function showBooking(token, pre) {
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${b.pay_url ? `<button class="btn solid" data-pay="${esc(b.pay_url)}">Pagar la seña</button>` : ''}
         ${b.can_cancel ? `<button class="btn" data-cancel="${esc(b.token)}">Cancelar turno</button>` : ''}
-        <a class="btn" href="${wa(SITE.site.whatsapp, `Hola! Tengo el turno ${b.code} (${b.service_name}, ${b.when}).`)}" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, `Hola! Tengo el turno ${b.code} (${b.service_name}, ${b.when}).`)}" target="_blank" rel="noopener">WhatsApp</a>
         ${['cancelled', 'expired'].includes(b.status) ? '<button class="btn solid" data-book>Reservar otro turno</button>' : ''}
       </div></div></div>`;
   } catch (e) { $('#drawer .dbody').innerHTML = `<p class="form-err" style="margin-top:20px">${esc(e.message)}</p>`; }

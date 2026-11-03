@@ -20,6 +20,29 @@ function ensure(st) {
   st.resets = st.resets || [];
   st.crm = st.crm || {};
   st.ids.customer = st.ids.customer || 0;
+  migrate(st);
+}
+/** Cambios de datos que se aplican una sola vez a estados ya guardados (no pisan lo que se edite después). */
+const MIGRATIONS = {
+  'wa-2026-11': (st) => {
+    const site = st.settings.site;
+    if (site.ritualsWhatsapp === undefined) site.ritualsWhatsapp = SITE.ritualsWhatsapp;
+    if (digits(site.whatsapp) === digits(SITE.ritualsWhatsapp)) site.whatsapp = SITE.whatsapp;
+    if (!site.eventsWhatsapp) site.eventsWhatsapp = SITE.eventsWhatsapp;
+  },
+  'reiki-foto-2026-11': (st) => {
+    const r = st.services.find((s) => s.slug === 'reiki');
+    if (r && (!r.image || r.image === 'media/deco-cristal.webp')) r.image = SERVICES.find((s) => s.slug === 'reiki').image;
+  },
+};
+function migrate(st) {
+  st.meta.migrations = st.meta.migrations || [];
+  for (const [k, fn] of Object.entries(MIGRATIONS)) if (!st.meta.migrations.includes(k)) { fn(st); st.meta.migrations.push(k); }
+}
+/** WhatsApp que atiende un servicio: el propio, el de head spa y masajes, o el general. */
+export function serviceWhatsapp(st, s) {
+  const site = st.settings.site;
+  return (s && s.whatsapp) || (s && s.category === 'rituales' && site.ritualsWhatsapp) || site.whatsapp;
 }
 export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción' };
@@ -34,7 +57,7 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '' }, customers: [], resets: [], crm: {},
+    meta: { lastDaily: '', migrations: Object.keys(MIGRATIONS) }, customers: [], resets: [], crm: {},
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, bookingNumber: 1000 },
   };
@@ -136,6 +159,7 @@ function publicBooking(st, env, b) {
   return {
     code: b.code, token: b.token, status: b.status, status_label: BOOKING_STATUS[b.status], service_name: b.service_name, start: b.start, when: longDate(b.start), duration: b.duration,
     price: b.price, deposit: b.deposit, deposit_due: b.deposit_due, deposit_paid: b.deposit_paid, gift_applied: b.gift_applied, name: b.name, email: b.email,
+    whatsapp: serviceWhatsapp(st, st.services.find((s) => s.id === b.service_id)),
     hold_until: b.hold_until, pay_url: b.status === 'pending_payment' ? b.pay_url : null,
     can_cancel: ['confirmed', 'pending_payment'].includes(b.status) && localToMs(b.start) - env.now() > st.settings.booking.cancelHours * 3600e3,
   };
@@ -151,7 +175,9 @@ async function sendEmail(st, env, template, to, ctx, ref = {}) {
   ensure(st);
   const E = st.settings.emails;
   if (E.enabled[template] === false && !ref.test) return;
-  let { subject, html } = renderEmail(template, { site: st.settings.site, cancelHours: st.settings.booking.cancelHours, home: env.publicUrl + '/', reviewUrl: E.reviewUrl, ...ctx }, E.custom[template] || {});
+  const svc = ctx.booking && st.services.find((s) => s.id === ctx.booking.service_id);
+  const site = svc ? { ...st.settings.site, whatsapp: serviceWhatsapp(st, svc) } : st.settings.site;
+  let { subject, html } = renderEmail(template, { site, cancelHours: st.settings.booking.cancelHours, home: env.publicUrl + '/', reviewUrl: E.reviewUrl, ...ctx }, E.custom[template] || {});
   if (ref.test) subject = '[Prueba] ' + subject;
   const id = ++st.ids.email;
   const row = { id, at: iso(env), template, to, subject, html, status: 'enviando', ...ref };
