@@ -197,6 +197,28 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 .event h4 { margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 500; }
 .event p { margin: 2px 0 0; font-size: 13px; color: #3b3832; }
 
+/* ── Alquiler del espacio ─────────────────────── */
+.rent { padding-block: 110px; background: var(--papel); }
+.rent-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: clamp(40px, 6vw, 96px); align-items: center; }
+.rent h2 { font-family: var(--display); font-size: clamp(40px, 5vw, 64px); line-height: 1; }
+.rent-copy { display: grid; gap: 18px; justify-items: start; }
+.rent-copy p { margin: 0; font-size: 16px; max-width: 46ch; }
+.rent-copy .it { font-family: var(--serif); font-style: italic; font-size: 21px; color: var(--suave); }
+.rent-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 15px; width: 100%; }
+.rent-list li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; padding-top: 8px; border-top: 1px solid var(--linea); }
+.rent-list li::before { content: "·"; color: var(--dorado); font-size: 22px; line-height: .8; }
+.rent-photos { display: grid; grid-template-columns: 1fr; gap: 14px; position: relative; }
+.rent-photos img { width: 100%; object-fit: cover; display: block; }
+.rent-photos img:first-child { aspect-ratio: 4 / 5; object-position: center 78%; width: 78%; justify-self: end; }
+.rent-photos img + img { position: absolute; left: 0; bottom: -40px; width: 52%; aspect-ratio: 4 / 3; border: 8px solid var(--papel); }
+@media (max-width: 800px) {
+  .rent { padding-block: 80px; }
+  .rent-grid { grid-template-columns: 1fr; gap: 40px; }
+  .rent-photos { order: -1; }
+  .rent-photos img:first-child { width: 100%; aspect-ratio: 4 / 5; }
+  .rent-photos img + img { display: none; }
+}
+
 /* ── Gift cards ───────────────────────────────── */
 .gifts { padding-block: 110px; }
 .gift-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 6vw, 96px); align-items: center; }

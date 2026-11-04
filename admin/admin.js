@@ -374,7 +374,7 @@ async function viewServices(editId = null) {
         <label class="fl"><span>WhatsApp propio (opcional)</span><input id="eWa" value="${esc(ed.whatsapp)}" placeholder="Si lo atiende otra persona"></label></div>
       <label class="fl"><span>Descripción corta</span><textarea id="eShort" rows="2">${esc(ed.short)}</textarea></label>
       <label class="fl"><span>Qué incluye (uno por línea)</span><textarea id="eInc" rows="4">${esc((ed.includes || []).join('\n'))}</textarea></label>
-      <div class="row"><label class="fl"><span>Foto</span><select id="eImg"><option value="">Sin foto</option>${['headspa-ritual', 'headspa-agua', 'headspa-joya', 'camilla', 'manicuria-cafe', 'manicuria-lampara', 'unas', 'barras-access', 'deco-cristal', 'cafeteria', 'cafe-plantas', 'vitrina'].map((f) => `<option value="media/${f}.webp" ${ed.image === `media/${f}.webp` ? 'selected' : ''}>${f}</option>`).join('')}${ed.image && !ed.image.startsWith('media/') ? `<option selected value="${esc(ed.image)}">${esc(ed.image)}</option>` : ''}</select></label>
+      <div class="row"><label class="fl"><span>Foto</span><select id="eImg"><option value="">Sin foto</option>${['headspa-ritual', 'headspa-agua', 'headspa-joya', 'camilla', 'manicuria-cafe', 'manicuria-lampara', 'espacio-taller', 'espacio-mesa', 'unas', 'barras-access', 'deco-cristal', 'cafeteria', 'cafe-plantas', 'vitrina'].map((f) => `<option value="media/${f}.webp" ${ed.image === `media/${f}.webp` ? 'selected' : ''}>${f}</option>`).join('')}${ed.image && !ed.image.startsWith('media/') ? `<option selected value="${esc(ed.image)}">${esc(ed.image)}</option>` : ''}</select></label>
         <div class="fl"><span>Días en que se ofrece</span><div class="chips">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" data-day="${d}" ${!ed.days?.length || ed.days.includes(d) ? 'checked' : ''}> ${DAYS[d].slice(0, 3)}</label>`).join('')}</div></div></div>
       <label class="check"><input type="checkbox" id="eVis" ${ed.visible ? 'checked' : ''}> Visible en la web</label>
       <p class="err" id="eErr"></p>
@@ -695,7 +695,7 @@ async function viewPros(editId = null) {
 /** Formulario de alta o edición: datos personales, acceso al panel, servicios y forma de pago. */
 function proForm(box, p, meta) {
   const v = p || { name: '', email: '', phone: '', dni: '', cuit: '', birthday: '', address: '', alias: '', specialty: '', notes: '', services: [], pay: { type: 'comision', percent: 40, base: 0 }, active: true, has_access: false };
-  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias' };
+  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias', espacio: 'Alquiler del espacio' };
   const byCat = {}; for (const s of meta.services) (byCat[s.category] = byCat[s.category] || []).push(s);
   const inp = (k, label, type = 'text', extra = '') => `<label class="fl"><span>${label}</span><input id="pf_${k}" type="${type}" value="${esc(v[k] || '')}" ${extra}></label>`;
   box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva profesional'}</h2>

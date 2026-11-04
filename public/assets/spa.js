@@ -131,7 +131,7 @@ function onScroll() {
 
 // ── Secciones ────────────────────────────────────────────
 // WhatsApp que atiende cada servicio: el propio, el de head spa y masajes, o el general del local.
-const svcWa = (s) => (s && s.whatsapp) || (s && s.category === 'rituales' && SITE.site.ritualsWhatsapp) || SITE.site.whatsapp;
+const svcWa = (s) => (s && s.whatsapp) || (s && s.category === 'rituales' && SITE.site.ritualsWhatsapp) || (s && s.category === 'espacio' && SITE.site.eventsWhatsapp) || SITE.site.whatsapp;
 const svcBySlug = (slug) => SITE.services.find((s) => s.slug === slug);
 const cat = (k) => SITE.categories.find((c) => c.key === k) || {};
 function actionsFor(s) {
@@ -155,7 +155,20 @@ function renderSections() {
       <div class="actions">${actionsFor(s)}</div></div></article>`).join('');
   const mani = SITE.services.filter((s) => s.category === 'manicuria');
   $('#maniMenu').innerHTML = mani.map((s) => `<li><span class="nm">${esc(s.name)}${s.tag ? `<small>${esc(s.tag)}</small>` : ''}</span><span class="pr">${s.price ? fmt(s.price) : 'Consultar'}</span></li>`).join('');
-  const ther = SITE.services.filter((s) => s.category === 'terapias' || !['rituales', 'manicuria'].includes(s.category));
+  const ther = SITE.services.filter((s) => s.category === 'terapias' || !['rituales', 'manicuria', 'espacio'].includes(s.category));
+  // Alquiler del espacio: sección propia con foto grande.
+  const space = SITE.services.filter((s) => s.category === 'espacio');
+  const sp = space[0], spCat = cat('espacio');
+  $('#alquiler').hidden = !sp;
+  if (sp) {
+    $('#spaceTitle').textContent = spCat.title || sp.name;
+    $('#spaceTag').textContent = sp.tag || sp.name;
+    $('#spaceIntro').textContent = spCat.intro || '';
+    $('#spaceShort').textContent = sp.short || '';
+    $('#spaceList').innerHTML = (sp.includes || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    if (sp.image) $('#spaceImg').src = MEDIA(sp.image);
+    $('#spaceWa').href = wa(svcWa(sp), `Hola! Quiero consultar por el ${sp.name.toLowerCase()} de Casa Samadhi para una actividad. ¿Qué fechas tienen disponibles?`);
+  }
   $('#therList').innerHTML = ther.map((s) => `<article class="ther">
     ${s.image ? `<div class="ph"><img src="${MEDIA(s.image)}" alt="${esc(s.name)}" loading="lazy"></div>` : ''}
     <div class="body">${s.tag ? `<div class="tg">${esc(s.tag)}</div>` : ''}<h3>${esc(s.name)}</h3>${s.short ? `<p>${esc(s.short)}</p>` : ''}${s.price ? `<p>${fmt(s.price)}${s.duration ? ` · ${durTxt(s.duration)}` : ''}</p>` : ''}
@@ -185,7 +198,7 @@ function renderSections() {
     `<li><a href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a></li>`,
   ].join('');
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>
-    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
+    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><a href="#alquiler">Alquiler del espacio</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
     <hr><a class="sm" href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a><a class="sm" href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a><a class="sm" href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram</a>`;
   if (!SITE.giftcards.enabled) { $('#giftcards').hidden = true; $$('[data-gift]').forEach((b) => (b.hidden = true)); }
   const g = SITE.services.find((s) => s.slug === 'ritual-esencial');

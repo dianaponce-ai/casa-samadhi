@@ -6,6 +6,7 @@ export const CATEGORIES = [
   { key: 'rituales', name: 'Rituales', title: 'Head spa & masajes', intro: 'Un ritual para soltar el cuerpo, la cabeza y el día. Agua tibia, aromas, manos que saben y silencio.' },
   { key: 'manicuria', name: 'Manicuría', title: 'Manicuría', intro: 'Todos nuestros servicios de manicuría incluyen café de cortesía, mensaje de oráculo y spa de manos.' },
   { key: 'terapias', name: 'Terapias', title: 'Terapias holísticas', intro: 'Sesiones para armonizar cuerpo, mente y energía, con especialistas que se suman a la casa.' },
+  { key: 'espacio', name: 'Alquiler del espacio', title: 'Un espacio pensado para crear y compartir', intro: 'Casa Samadhi abre sus puertas a propuestas que inspiran, enseñan y conectan.' },
 ];
 
 export const RESOURCES = [
@@ -38,6 +39,10 @@ export const SERVICES = [
 
   { slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', tag: 'Lecturas personalizadas', duration: 45, price: null, image: 'media/deco-cristal.webp',
     short: 'Una lectura para hacerle una pregunta al tarot y recibir el mensaje del oráculo.' },
+
+  { slug: 'alquiler-del-espacio', category: 'espacio', resource: 'terapias', mode: 'whatsapp', name: 'Alquiler del espacio', tag: 'Para actividades especiales', duration: 0, price: null, image: 'media/espacio-taller.webp',
+    short: 'Un espacio cálido y acogedor para talleres, clases, encuentros y celebraciones de hasta 10 personas. Consultanos por fechas disponibles.',
+    includes: ['Hasta 10 personas', 'Talleres, clases, meriendas, reuniones y coworking', 'Mesa grande, luz natural y ambientación cálida', 'Calle 47 N° 679, La Plata'] },
 ];
 
 export const SITE = {

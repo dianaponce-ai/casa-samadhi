@@ -37,6 +37,14 @@ const MIGRATIONS = {
     const fuera = ['reiki', 'armonizacion', 'barras-de-access'];
     st.services = st.services.filter((s) => !fuera.includes(s.slug));
   },
+  'alquiler-espacio-2026-11': (st) => {
+    const cat = CATEGORIES.find((c) => c.key === 'espacio');
+    if (!st.settings.categories.some((c) => c.key === 'espacio')) st.settings.categories.push(structuredClone(cat));
+    if (st.services.some((s) => s.slug === 'alquiler-del-espacio')) return;
+    const def = SERVICES.find((s) => s.slug === 'alquiler-del-espacio');
+    st.ids.service = Math.max(st.ids.service || 0, ...st.services.map((s) => s.id));
+    st.services.push({ id: ++st.ids.service, position: st.services.length, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', ...structuredClone(def) });
+  },
   'faq-pagos-2026-11': (st) => {
     const faq = st.settings.content?.faq;
     if (!faq) return;
@@ -53,7 +61,7 @@ function migrate(st) {
 /** WhatsApp que atiende un servicio: el propio, el de head spa y masajes, o el general. */
 export function serviceWhatsapp(st, s) {
   const site = st.settings.site;
-  return (s && s.whatsapp) || (s && s.category === 'rituales' && site.ritualsWhatsapp) || site.whatsapp;
+  return (s && s.whatsapp) || (s && s.category === 'rituales' && site.ritualsWhatsapp) || (s && s.category === 'espacio' && site.eventsWhatsapp) || site.whatsapp;
 }
 export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción', pro: 'Profesional' };
