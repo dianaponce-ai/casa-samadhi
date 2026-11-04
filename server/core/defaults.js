@@ -75,6 +75,18 @@ export const BOOKING = {
   staffEmails: '',
 };
 
+// Cómo se paga la seña: Mercado Pago y/o transferencia. Los datos bancarios se le muestran a la clienta al reservar.
+export const PAYMENTS = {
+  mpEnabled: true,
+  transferEnabled: true,
+  transferHoldHours: 12, // cuánto se guarda el turno mientras llega la transferencia
+  alias: '',
+  cbu: '',
+  holder: '',
+  bank: '',
+  cuit: '',
+};
+
 export const GIFTCARDS = {
   enabled: true,
   amounts: [45000, 55000, 80000, 100000],
@@ -85,7 +97,8 @@ export const GIFTCARDS = {
 export const FAQ = [
   { q: '¿Cómo reservo un turno?', a: 'Tocá **Reservar**, elegí el servicio, el día y el horario libre y completá tus datos. Para confirmarlo pagás una seña con Mercado Pago y te llega la confirmación por email. Si preferís, escribinos por WhatsApp y lo coordinamos.' },
   { q: '¿Qué es el head spa?', a: 'Es un ritual de cuidado del cuero cabelludo y relajación: masaje capilar cervical y craneal, lavado profundo con agua tibia y productos naturales, aromaterapia y un secado suave. Sale con la cabeza liviana y el pelo limpio.' },
-  { q: '¿Cuánto es la seña y cómo se descuenta?', a: 'La seña es un porcentaje del servicio y se descuenta del total. El resto lo pagás en la casa, el día del turno.' },
+  { q: '¿Cuánto es la seña y cómo se paga?', a: 'La seña es un porcentaje del servicio y se descuenta del total. La pagás con **Mercado Pago** o por **transferencia**: con Mercado Pago el turno se confirma al instante; con transferencia te mostramos los datos y lo confirmamos apenas la recibimos. El resto lo pagás en la casa, el día del turno.' },
+  { q: '¿Puedo reservar más de un servicio?', a: 'Sí. Después de elegir el primero tocá **Agregar otro servicio** y sumá el que quieras para el mismo día, por ejemplo un head spa y una manicuría. Pagás una sola seña por todo.' },
   { q: '¿Puedo cambiar o cancelar mi turno?', a: 'Sí. Hasta 24 horas antes podés cancelarlo desde el link del email de confirmación o escribirnos para pasarlo a otro día; la seña queda a cuenta del nuevo turno o te la devolvemos. Con menos de 24 horas de aviso la seña no se devuelve.' },
   { q: '¿Cómo funcionan las gift cards?', a: 'Elegís un monto o un ritual, la pagás online y te llega una tarjeta con un código. Quien la recibe lo escribe al reservar y se descuenta del total. Vale por 6 meses.' },
   { q: '¿Qué incluye la manicuría?', a: 'Todos los servicios incluyen exfoliación e hidratación de manos, café de cortesía, mensaje de oráculo y spa de manos.' },

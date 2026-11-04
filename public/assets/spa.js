@@ -43,7 +43,7 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('o
 const SLIDES = [
   { img: 'media/headspa-ritual.webp', pos: 'center 62%', eyebrow: 'Head spa', title: 'Un ritual esencial', sub: 'Agua tibia, aromas y manos que saben. Una hora solo para vos.', cta: ['Reservar', 'book:ritual-esencial'], cta2: ['Ver rituales', '#rituales'] },
   { img: 'media/camilla.webp', pos: 'center 55%', eyebrow: 'Masajes', title: 'Soltá el cuerpo', sub: 'Masoterapia relajante con pindas herbales calientes y sonidos de cuencos.', cta: ['Reservar', 'book:masoterapia-relajante'] },
-  { img: 'media/manicuria-cafe.webp', eyebrow: 'Manicuría', title: 'Tu momento, tu lugar', sub: 'Con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
+  { img: 'media/manicuria-lampara.webp', pos: '84% 60%', eyebrow: 'Manicuría', title: 'Tu momento, tu lugar', sub: 'Con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
   { img: 'media/cafeteria.webp', eyebrow: 'Cafetería & eventos', title: 'Café, spa & momentos', sub: 'Meriendas, talleres y encuentros en Calle 47 N° 679.', cta: ['Conocé la casa', '#cafe'] },
 ];
 const hero = { i: 0, n: 0, timer: null, dur: 7000, busy: false, py: 0 };
@@ -214,73 +214,131 @@ function setHash(h) { try { history.replaceState(null, '', h || location.pathnam
 const head = (title, back) => `<div class="dhead">${back ? `<button class="back" data-back="${back}">← Volver</button>` : ''}<h3 tabindex="-1">${esc(title)}</h3><button class="close" data-close aria-label="Cerrar">${ICON_X}</button></div>`;
 
 // ── Reserva ──────────────────────────────────────────────
-const bk = { step: 1, service: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '' };
+// Se puede reservar más de un servicio: `bk.items` son los ya elegidos y bk.service/date/time/pro el que se está eligiendo.
+const bk = { step: 1, items: [], service: null, pro: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '', payMethod: 'mp' };
+const MAX_ITEMS = 4;
+const svcName = (s) => `${s.name}${s.tag && s.category === 'manicuria' ? ` · ${s.tag}` : ''}`;
+const toMinC = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const lockDate = () => bk.items[0]?.date || '';
 function openBooking({ serviceId = null, category = null } = {}) {
   if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone, notes: bk.form.notes || ACC.stats?.lastNotes || '' };
-  Object.assign(bk, { step: serviceId ? 2 : 1, service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
+  Object.assign(bk, { step: serviceId ? 2 : 1, items: [], service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, pro: null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
   setHash('#reservar');
   renderBooking(true);
   if (bk.service) loadDays();
 }
+/** Horarios que no chocan con los servicios ya elegidos (la clienta no puede estar en dos a la vez). */
+function freeSlots(d) {
+  if (!d || !bk.service) return [];
+  const dur = bk.service.duration;
+  return d.slots.filter((t) => !bk.items.some((it) => it.date === d.date && toMinC(t) < toMinC(it.time) + it.service.duration && toMinC(it.time) < toMinC(t) + dur));
+}
 async function loadDays(more = false) {
   bk.loading = true; renderBooking();
   try {
-    const from = more && bk.days.length ? addDay(bk.days.at(-1).date, 1) : '';
-    const r = await api(`/api/availability?service=${bk.service.id}&days=21${from ? `&from=${from}` : ''}`);
-    bk.days = more ? [...bk.days, ...r.days] : r.days;
-    bk.maxDate = r.maxDate;
-    if (!bk.date || !bk.days.some((d) => d.date === bk.date)) bk.date = (bk.days.find((d) => d.slots.length) || {}).date || '';
+    const lock = lockDate();
+    const from = lock || (more && bk.days.length ? addDay(bk.days.at(-1).date, 1) : '');
+    const r = await api(`/api/availability?service=${bk.service.id}&days=${lock ? 1 : 21}${from ? `&from=${from}` : ''}${bk.pro ? `&pro=${bk.pro}` : ''}`);
+    bk.days = more && !lock ? [...bk.days, ...r.days] : r.days;
+    bk.maxDate = lock || r.maxDate;
+    if (!bk.date || !bk.days.some((d) => d.date === bk.date)) bk.date = (bk.days.find((d) => freeSlots(d).length) || bk.days[0] || {}).date || '';
+    if (bk.time && !freeSlots(bk.days.find((d) => d.date === bk.date)).includes(bk.time)) bk.time = '';
   } catch (e) { bk.error = e.message; }
   bk.loading = false; renderBooking();
 }
 const addDay = (k, n) => new Date(Date.parse(k + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+/** Totales como los calcula el servidor: seña por servicio, menos la gift card servicio por servicio. */
+function totals() {
+  let left = bk.gift ? bk.gift.balance : 0, due = 0, giftAmt = 0, price = 0, dep = 0;
+  for (const it of bk.items) {
+    const p = it.service.price, d = deposit(p), g = Math.min(left, p);
+    left -= g; giftAmt += g; price += p; dep += d; due += Math.max(0, d - g);
+  }
+  return { price, dep, giftAmt, due, rest: Math.max(0, price - giftAmt - due) };
+}
+const payOpts = () => SITE.booking.pay || { mp: true, transfer: false };
 function renderBooking(open = false) {
   const steps = `<div class="steps" aria-hidden="true">${[1, 2, 3].map((n) => `<span class="${bk.step >= n ? 'on' : ''}"></span>`).join('')}</div>`;
-  let body = '', foot = '';
+  const adding = bk.items.length > 0;
+  let body = '', foot = '', back = bk.step > 1 ? String(bk.step - 1) : '';
   if (bk.step === 1) {
     const groups = SITE.categories.map((c) => ({ c, list: SITE.services.filter((s) => s.category === c.key && s.mode === 'online') })).filter((g) => g.list.length && (!bk.filter || g.c.key === bk.filter));
     const waOnly = SITE.services.filter((s) => s.mode === 'whatsapp' && (!bk.filter || s.category === bk.filter));
     const lv = ACC?.stats?.lastVisit;
-    const again = lv && SITE.services.find((x) => lv.service_name.startsWith(x.name) && x.mode === 'online');
-    body = (ACC ? `<div class="sel-sum welcome"><span class="n">Hola de nuevo, ${esc(ACC.customer.name.split(' ')[0])}</span>${lv ? `<span class="w">Tu última visita fue ${esc(lv.when)}: ${esc(lv.service_name)}.</span>` : '<span class="w">Tus datos ya están cargados para reservar.</span>'}${again && !bk.filter ? `<button class="btn sm" data-pick="${again.id}" style="justify-self:start;margin-top:6px">Repetir ${esc(again.name)}</button>` : ''}</div>` : '') + groups.map((g) => `<div class="svc-group"><div class="step-t">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="n">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''}</span><span class="p">${fmt(s.price)}</span><span class="m">${durTxt(s.duration)}</span></button>`).join('')}</div>`).join('')
+    const again = !adding && lv && SITE.services.find((x) => lv.service_name.startsWith(x.name) && x.mode === 'online');
+    if (adding) back = 'sum';
+    body = (adding ? `<div class="sel-sum"><span class="n">Sumá otro servicio</span><span class="w">Para el ${esc(dayLabel(lockDate()).long)}, antes o después de ${bk.items.map((it) => esc(it.service.name)).join(' y ')}. Pagás una sola seña por todo.</span></div>`
+      : ACC ? `<div class="sel-sum welcome"><span class="n">Hola de nuevo, ${esc(ACC.customer.name.split(' ')[0])}</span>${lv ? `<span class="w">Tu última visita fue ${esc(lv.when)}: ${esc(lv.service_name)}.</span>` : '<span class="w">Tus datos ya están cargados para reservar.</span>'}${again && !bk.filter ? `<button class="btn sm" data-pick="${again.id}" style="justify-self:start;margin-top:6px">Repetir ${esc(again.name)}</button>` : ''}</div>` : '')
+      + groups.map((g) => `<div class="svc-group"><div class="step-t">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="n">${esc(svcName(s))}</span><span class="p">${fmt(s.price)}</span><span class="m">${durTxt(s.duration)}</span></button>`).join('')}</div>`).join('')
       + (bk.filter ? `<p class="note" style="margin-top:16px"><button class="link-btn" data-allsvc>Ver todos los servicios</button></p>` : '')
-      + (waOnly.length ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero consultar por una terapia.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
+      + (waOnly.length && !adding ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero consultar por una terapia.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
   } else if (bk.step === 2) {
     const s = bk.service;
     const day = bk.days.find((d) => d.date === bk.date);
-    body = `<div class="sel-sum"><span class="n">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''}</span><span class="w">${durTxt(s.duration)} · ${fmt(s.price)}</span><button class="link-btn" data-step="1" style="justify-self:start;margin-top:4px">Cambiar servicio</button></div>
-      <div class="step-t">Elegí el día</div>
-      ${bk.loading && !bk.days.length ? '<div class="spinner"></div>' : `<div class="daystrip" id="dayStrip">${bk.days.map((d) => { const l = dayLabel(d.date); return `<button class="day" data-day="${d.date}" ${d.slots.length ? '' : 'disabled'} aria-pressed="${d.date === bk.date}" aria-label="${esc(l.long)}${d.slots.length ? '' : ', sin turnos'}"><span class="w">${l.w}</span><span class="d">${l.d}</span><span class="mo">${MONTHS[l.m - 1]}</span></button>`; }).join('')}${bk.days.length && bk.days.at(-1).date < bk.maxDate ? `<button class="day" data-more><span class="w">más</span><span class="d">+</span><span class="mo">días</span></button>` : ''}</div>`}
+    const slots = freeSlots(day);
+    const pros = s.pros || [];
+    body = `<div class="sel-sum"><span class="n">${esc(svcName(s))}</span><span class="w">${durTxt(s.duration)} · ${fmt(s.price)}</span><button class="link-btn" data-step="1" style="justify-self:start;margin-top:4px">Cambiar servicio</button></div>
+      ${pros.length > 1 ? `<div class="step-t">¿Con quién?</div><div class="times pros">${[{ id: 0, name: 'Cualquiera' }, ...pros].map((p) => `<button class="time" data-pro="${p.id}" aria-pressed="${(bk.pro || 0) === p.id}">${esc(p.name)}</button>`).join('')}</div>` : pros.length === 1 ? `<p class="note" style="margin-top:12px">Te atiende ${esc(pros[0].name)}.</p>` : ''}
+      ${adding ? `<div class="step-t">Día</div><p class="note">${esc(cap(dayLabel(lockDate()).long))}: los servicios de una misma reserva son el mismo día.</p>`
+      : `<div class="step-t">Elegí el día</div>
+      ${bk.loading && !bk.days.length ? '<div class="spinner"></div>' : `<div class="daystrip" id="dayStrip">${bk.days.map((d) => { const l = dayLabel(d.date); const n = freeSlots(d).length; return `<button class="day" data-day="${d.date}" ${n ? '' : 'disabled'} aria-pressed="${d.date === bk.date}" aria-label="${esc(l.long)}${n ? '' : ', sin turnos'}"><span class="w">${l.w}</span><span class="d">${l.d}</span><span class="mo">${MONTHS[l.m - 1]}</span></button>`; }).join('')}${bk.days.length && bk.days.at(-1).date < bk.maxDate ? `<button class="day" data-more><span class="w">más</span><span class="d">+</span><span class="mo">días</span></button>` : ''}</div>`}`}
       ${bk.error ? `<p class="form-err">${esc(bk.error)}</p>` : ''}
-      ${bk.date ? `<div class="step-t">Horarios del ${esc(dayLabel(bk.date).long)}</div>${day?.slots.length ? `<div class="times">${day.slots.map((t) => `<button class="time" data-time="${t}" aria-pressed="${t === bk.time}">${t}</button>`).join('')}</div>` : '<p class="empty-slots">No quedan horarios este día.</p>'}` : (bk.days.length ? '<p class="empty-slots">No hay turnos libres en estos días. Probá con más días o escribinos.</p>' : '')}`;
-    foot = `<button class="btn solid wide" data-step="3" ${bk.time ? '' : 'disabled'}>Continuar</button>`;
+      ${bk.loading && adding ? '<div class="spinner"></div>' : bk.date ? `<div class="step-t">Horarios del ${esc(dayLabel(bk.date).long)}</div>${slots.length ? `<div class="times">${slots.map((t) => `<button class="time" data-time="${t}" aria-pressed="${t === bk.time}">${t}</button>`).join('')}</div>` : `<p class="empty-slots">${adding ? 'No quedan horarios para este servicio ese día. Probá con otro servicio.' : 'No quedan horarios este día.'}</p>`}` : (bk.days.length ? '<p class="empty-slots">No hay turnos libres en estos días. Probá con más días o escribinos.</p>' : '')}`;
+    foot = `<button class="btn solid wide" data-take ${bk.time ? '' : 'disabled'}>${adding ? 'Sumar a la reserva' : 'Continuar'}</button>`;
   } else if (bk.step === 3) {
-    const s = bk.service, f = bk.form, e = bk.errors;
-    const dep = deposit(s.price), giftAmt = bk.gift ? Math.min(bk.gift.balance, s.price) : 0, due = Math.max(0, dep - giftAmt);
+    const f = bk.form, e = bk.errors, t = totals(), P = payOpts();
+    back = '';
+    const both = P.mp && P.transfer;
+    if (!both) bk.payMethod = P.transfer && !P.mp ? 'transfer' : 'mp';
     const field = (k, label, type = 'text', extra = '') => `<div class="fl"><label for="b_${k}">${label}</label><input id="b_${k}" name="${k}" type="${type}" value="${esc(f[k] || '')}" ${e[k] ? 'aria-invalid="true"' : ''} ${extra}>${e[k] ? `<span class="err">${esc(e[k])}</span>` : ''}</div>`;
-    body = `<div class="sel-sum"><span class="n">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''}</span><span class="w">${esc(dayLabel(bk.date).long)} · ${bk.time} h · ${durTxt(s.duration)}</span><button class="link-btn" data-step="2" style="justify-self:start;margin-top:4px">Cambiar día u horario</button></div>
+    const sorted = bk.items.map((it, i) => ({ it, i })).sort((a, b) => a.it.time.localeCompare(b.it.time));
+    body = `<div class="step-t">Tu reserva · ${esc(dayLabel(lockDate()).long)}</div>
+      <div class="items">${sorted.map(({ it, i }) => `<div class="sel-sum item"><span class="n">${esc(svcName(it.service))}</span><span class="w">${it.time} h · ${durTxt(it.service.duration)} · ${fmt(it.service.price)}${it.proName ? ` · con ${esc(it.proName)}` : ''}</span>
+        <span class="acts"><button class="link-btn" data-edit-item="${i}">Cambiar</button>${bk.items.length > 1 ? `<button class="link-btn" data-rm-item="${i}">Quitar</button>` : ''}</span></div>`).join('')}</div>
+      ${bk.items.length < MAX_ITEMS ? `<button class="btn sm add-item" data-add-item>+ Agregar otro servicio</button>` : ''}
       <form class="bk" id="bkForm" novalidate>
         <div class="step-t" style="margin-bottom:0">Tus datos</div>
-        ${field('name', 'Nombre y apellido', 'text', 'autocomplete="name" autofocus')}
+        ${field('name', 'Nombre y apellido', 'text', 'autocomplete="name"')}
         <div class="row2">${field('email', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('phone', 'Celular (WhatsApp)', 'tel', 'autocomplete="tel" inputmode="tel"')}</div>
         <div class="fl"><label for="b_notes">¿Algo que debamos saber? (opcional)</label><textarea id="b_notes" name="notes" rows="2" placeholder="Alergias, embarazo, preferencias…">${esc(f.notes || '')}</textarea>${ACC && f.email === ACC.customer.email ? '<span class="note">Recordamos tus datos y lo que nos contaste la última vez. Cambialo si hace falta.</span>' : ''}</div>
         <div class="gift-apply"><div class="fl"><label for="b_gift">¿Tenés una gift card?</label><input id="b_gift" name="gift_code" value="${esc(f.gift_code || bk.gift?.code || '')}" placeholder="CS-XXXX-XXXX" autocomplete="off" style="text-transform:uppercase" ${bk.giftErr ? 'aria-invalid="true"' : ''}>${bk.giftErr ? `<span class="err">${esc(bk.giftErr)}</span>` : ''}</div><button class="btn sm" type="button" data-gift-check>${bk.gift ? 'Quitar' : 'Aplicar'}</button></div>
-        ${bk.gift ? `<p class="gift-ok">Gift card aplicada: se descuentan ${fmt(giftAmt)} (saldo ${fmt(bk.gift.balance)}).</p>` : ''}
+        ${bk.gift ? `<p class="gift-ok">Gift card aplicada: se descuentan ${fmt(t.giftAmt)} (saldo ${fmt(bk.gift.balance)}).</p>` : ''}
+        ${t.due && both ? `<fieldset class="paym"><legend class="step-t">¿Cómo pagás la seña?</legend>
+          <label class="opt"><input type="radio" name="pay_method" value="mp" ${bk.payMethod === 'mp' ? 'checked' : ''}><span><b>Mercado Pago</b><small>Tarjeta, débito o dinero en cuenta. El turno se confirma al instante.</small></span></label>
+          <label class="opt"><input type="radio" name="pay_method" value="transfer" ${bk.payMethod === 'transfer' ? 'checked' : ''}><span><b>Transferencia</b><small>Te mostramos el alias y te guardamos el turno ${P.transferHoldHours || 12} h. Lo confirmamos cuando llega.</small></span></label>
+        </fieldset>` : ''}
         <label class="check"><input type="checkbox" name="accept" ${f.accept ? 'checked' : ''}><span>Acepto los <button type="button" class="link-btn" data-legal style="font-size:inherit;letter-spacing:0;text-transform:none">términos y la política de cancelación</button>: puedo cancelar o reprogramar hasta ${SITE.booking.cancelHours} horas antes.</span></label>
         ${e.accept ? `<span class="form-err">${esc(e.accept)}</span>` : ''}
         ${bk.error ? `<p class="form-err" role="alert">${esc(bk.error)}</p>` : ''}
       </form>`;
-    foot = `<div class="sum"><span>Precio del servicio</span><span class="money">${fmt(s.price)}</span></div>
-      ${giftAmt ? `<div class="sum"><span>Gift card</span><span class="money">− ${fmt(giftAmt)}</span></div>` : ''}
-      <div class="sum"><span>${due ? `Seña a pagar ahora (${SITE.booking.depositPercent}%)` : 'A pagar ahora'}</span><b class="money">${fmt(due)}</b></div>
-      <p class="note">${due ? `El resto (${fmt(Math.max(0, s.price - dep - Math.max(0, giftAmt - dep)))}) lo pagás en la casa. Guardamos el horario ${SITE.booking.holdMinutes} minutos mientras pagás.` : giftAmt >= s.price ? 'Tu gift card cubre todo el servicio.' : `El resto (${fmt(s.price - giftAmt)}) lo pagás en la casa.`}</p>
-      <button class="btn solid wide" form="bkForm" type="submit" ${bk.sending ? 'disabled' : ''}>${bk.sending ? 'Un momento…' : due ? 'Pagar seña con Mercado Pago' : 'Confirmar turno'}</button>`;
+    const tr = bk.payMethod === 'transfer';
+    foot = `<div class="sum"><span>${bk.items.length > 1 ? `${bk.items.length} servicios` : 'Precio del servicio'}</span><span class="money">${fmt(t.price)}</span></div>
+      ${t.giftAmt ? `<div class="sum"><span>Gift card</span><span class="money">− ${fmt(t.giftAmt)}</span></div>` : ''}
+      <div class="sum"><span>${t.due ? `Seña a pagar ahora (${SITE.booking.depositPercent}%)` : 'A pagar ahora'}</span><b class="money">${fmt(t.due)}</b></div>
+      <p class="note">${t.due ? `El resto (${fmt(t.rest)}) lo pagás en la casa. ${tr ? `Te guardamos el turno ${P.transferHoldHours || 12} horas mientras llega la transferencia.` : `Guardamos el horario ${SITE.booking.holdMinutes} minutos mientras pagás.`}` : t.giftAmt >= t.price ? 'Tu gift card cubre todo.' : `El resto (${fmt(t.price - t.giftAmt)}) lo pagás en la casa.`}</p>
+      <button class="btn solid wide" form="bkForm" type="submit" ${bk.sending ? 'disabled' : ''}>${bk.sending ? 'Un momento…' : !t.due ? 'Confirmar turno' : tr ? 'Reservar y ver datos para transferir' : 'Pagar seña con Mercado Pago'}</button>`;
   }
-  const html = `${head(bk.step === 1 ? 'Reservá tu turno' : bk.step === 2 ? 'Día y horario' : 'Confirmá tu turno', bk.step > 1 ? String(bk.step - 1) : '')}${steps}<div class="dbody">${body}</div>${foot ? `<div class="dfoot">${foot}</div>` : ''}`;
+  const title = bk.step === 1 ? (adding ? 'Agregar servicio' : 'Reservá tu turno') : bk.step === 2 ? 'Día y horario' : 'Confirmá tu reserva';
+  const html = `${head(title, back)}${steps}<div class="dbody">${body}</div>${foot ? `<div class="dfoot">${foot}</div>` : ''}`;
   if (open || !$('#drawer').classList.contains('on')) openDrawer(html, { label: 'Reservar turno' });
   else { const sc = $('#drawer .dbody')?.scrollTop || 0, ds = $('#dayStrip')?.scrollLeft || 0; $('#drawer').innerHTML = html; if ($('#drawer .dbody')) $('#drawer .dbody').scrollTop = sc; if ($('#dayStrip')) $('#dayStrip').scrollLeft = ds; }
 }
-function readBkForm() { const f = $('#bkForm'); if (!f) return; const d = new FormData(f); bk.form = { name: d.get('name') || '', email: d.get('email') || '', phone: d.get('phone') || '', notes: d.get('notes') || '', gift_code: d.get('gift_code') || '', accept: !!d.get('accept') }; }
+/** Pasa el servicio que se está eligiendo a la lista de la reserva. */
+function takeItem() {
+  if (!bk.service || !bk.time) return;
+  const pros = bk.service.pros || [];
+  const proName = bk.pro ? pros.find((p) => p.id === bk.pro)?.name || '' : pros.length === 1 ? pros[0].name : '';
+  bk.items.push({ service: bk.service, date: bk.date, time: bk.time, pro: bk.pro || null, proName });
+  Object.assign(bk, { service: null, pro: null, time: '', days: [], step: 3, error: '' });
+  renderBooking();
+}
+/** Vuelve a elegir un servicio que ya estaba en la reserva. */
+function editItem(i) {
+  const [it] = bk.items.splice(i, 1);
+  Object.assign(bk, { service: it.service, pro: it.pro, date: it.date, time: it.time, days: [], step: 2, error: '' });
+  renderBooking(); loadDays();
+}
+function readBkForm() { const f = $('#bkForm'); if (!f) return; const d = new FormData(f); bk.form = { name: d.get('name') || '', email: d.get('email') || '', phone: d.get('phone') || '', notes: d.get('notes') || '', gift_code: d.get('gift_code') || '', accept: !!d.get('accept') }; if (d.get('pay_method')) bk.payMethod = d.get('pay_method'); }
 async function submitBooking() {
   readBkForm();
   bk.errors = {}; bk.error = '';
@@ -292,18 +350,36 @@ async function submitBooking() {
   if (Object.keys(bk.errors).length) { renderBooking(); $('#drawer [aria-invalid="true"]')?.focus(); return; }
   bk.sending = true; renderBooking();
   try {
-    const r = await api('/api/bookings', { service_id: bk.service.id, date: bk.date, time: bk.time, ...f, gift_code: bk.gift?.code || '' });
+    const items = bk.items.map((it) => ({ service_id: it.service.id, date: it.date, time: it.time, pro_id: it.pro || null }));
+    const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod });
+    bk.items = [];
     if (r.pay_url) { bk.sending = false; goPay(r.pay_url); return; }
     showBooking(r.booking.token, r.booking);
   } catch (e) {
     bk.sending = false;
-    if (e.data?.taken) { bk.step = 2; bk.time = ''; bk.error = e.message; await loadDays(); return; }
-    bk.errors = e.data?.errors || {}; bk.error = Object.keys(bk.errors).length ? '' : e.message; renderBooking();
+    if (e.data?.taken && bk.items.length === 1) { editItem(0); bk.error = e.message; return; }
+    bk.errors = e.data?.errors || {};
+    bk.error = Object.keys(bk.errors).every((k) => ['name', 'email', 'phone', 'accept'].includes(k)) && Object.keys(bk.errors).length ? '' : e.message;
+    if (bk.errors.gift_code) bk.giftErr = bk.errors.gift_code;
+    renderBooking();
   }
 }
 function goPay(url) { if (url.startsWith('#')) { location.hash = url; route(); } else location.href = url; }
 
 // ── Estado del turno (link del email) ────────────────────
+function transferBlock(b) {
+  const T = b.transfer;
+  const row = (k, v, copy) => (v ? `<div><dt>${k}</dt><dd><b>${esc(v)}</b>${copy ? ` <button class="link-btn" data-copy="${esc(v)}">Copiar</button>` : ''}</dd></div>` : '');
+  const msg = `Hola! Te mando el comprobante de la seña del turno ${b.code} (${b.service_name}, ${b.when}).`;
+  return `<div class="transfer"><div class="step-t" style="margin-top:0">Datos para transferir</div>
+    <dl class="kv">${row('Monto', fmt(T.amount), false)}${row('Alias', T.alias, true)}${row('CBU / CVU', T.cbu, true)}${row('Titular', T.holder)}${row('Banco', T.bank)}${row('CUIT', T.cuit)}${row('Referencia', b.code)}</dl>
+    <p class="note">Guardamos tu turno hasta el ${esc(new Date(b.hold_until).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }).replace(',', ''))}. Cuando veamos la transferencia te llega la confirmación por email.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      ${T.notified ? '<span class="pill ok">Ya nos avisaste: la estamos verificando</span>' : `<button class="btn solid" data-tsent="${esc(b.token)}">Ya transferí</button>`}
+      <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, msg)}" target="_blank" rel="noopener">Mandar comprobante</a>
+      ${T.can_mp ? `<button class="btn" data-paymp="${esc(b.token)}">Prefiero pagar con Mercado Pago</button>` : ''}
+    </div></div>`;
+}
 async function showBooking(token, pre) {
   setHash('#turno/' + token);
   openDrawer(`${head('Tu turno')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Tu turno' });
@@ -311,18 +387,21 @@ async function showBooking(token, pre) {
     const b = pre || (await api('/api/bookings/' + encodeURIComponent(token))).booking;
     const okS = ['confirmed', 'completed'].includes(b.status), badS = ['cancelled', 'expired', 'no_show'].includes(b.status);
     const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
-    $('#drawer').innerHTML = `${head('Tu turno')}<div class="dbody"><div class="status">
+    const many = b.items?.length > 1;
+    $('#drawer').innerHTML = `${head(many ? 'Tu reserva' : 'Tu turno')}<div class="dbody"><div class="status">
       <span class="pill ${okS ? 'ok' : badS ? 'bad' : ''}">${esc(b.status_label)}</span>
-      <div class="big">${b.status === 'confirmed' ? '¡Te esperamos!' : b.status === 'pending_payment' ? 'Falta la seña' : esc(b.service_name)}</div>
+      <div class="big">${b.status === 'confirmed' ? '¡Te esperamos!' : b.status === 'pending_payment' ? 'Falta la seña' : b.status === 'pending_transfer' ? 'Falta la transferencia' : esc(b.service_name)}</div>
       ${b.status === 'pending_payment' ? `<p>Guardamos tu horario hasta las ${new Date(b.hold_until).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}. Si el pago no se acredita, se libera.</p>` : ''}
-      <dl class="kv"><div><dt>Servicio</dt><dd>${esc(b.service_name)}</dd></div><div><dt>Día y hora</dt><dd>${esc(cap(b.when))}</dd></div><div><dt>Duración</dt><dd>${durTxt(b.duration)}</dd></div>
-        ${b.price ? `<div><dt>Precio</dt><dd>${fmt(b.price)}</dd></div>` : ''}${b.gift_applied ? `<div><dt>Gift card</dt><dd>− ${fmt(b.gift_applied)}</dd></div>` : ''}${b.deposit_paid ? `<div><dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}</dd></div>` : ''}
+      ${b.transfer ? transferBlock(b) : ''}
+      <dl class="kv">${many ? b.items.map((it) => `<div><dt>${it.start.slice(11)} h</dt><dd>${esc(it.service_name)}${it.pro_name ? ` · con ${esc(it.pro_name)}` : ''}${it.status !== b.status ? ` · ${esc(it.status_label)}` : ''}</dd></div>`).join('') : `<div><dt>Servicio</dt><dd>${esc(b.service_name)}</dd></div>`}
+        <div><dt>Día y hora</dt><dd>${esc(cap(b.when))}</dd></div>${!many && b.pro_name ? `<div><dt>Te atiende</dt><dd>${esc(b.pro_name)}</dd></div>` : ''}<div><dt>Duración</dt><dd>${durTxt(b.duration)}${many ? ' en total' : ''}</dd></div>
+        ${b.price ? `<div><dt>Precio</dt><dd>${fmt(b.price)}</dd></div>` : ''}${b.gift_applied ? `<div><dt>Gift card</dt><dd>− ${fmt(b.gift_applied)}</dd></div>` : ''}${b.deposit_paid ? `<div><dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}${b.pay_method_label ? ` · ${esc(b.pay_method_label)}` : ''}</dd></div>` : ''}
         ${b.status === 'confirmed' && b.price ? `<div><dt>Resta en la casa</dt><dd><b>${fmt(rest)}</b></dd></div>` : ''}<div><dt>Código</dt><dd>${esc(b.code)}</dd></div></dl>
       ${b.status === 'confirmed' ? `<p class="note">Te mandamos la confirmación a ${esc(b.email)}. Llegá 10 minutos antes: ${esc(SITE.site.address)}.</p>` : ''}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${b.pay_url ? `<button class="btn solid" data-pay="${esc(b.pay_url)}">Pagar la seña</button>` : ''}
-        ${b.can_cancel ? `<button class="btn" data-cancel="${esc(b.token)}">Cancelar turno</button>` : ''}
-        <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, `Hola! Tengo el turno ${b.code} (${b.service_name}, ${b.when}).`)}" target="_blank" rel="noopener">WhatsApp</a>
+        ${b.can_cancel ? `<button class="btn" data-cancel="${esc(b.token)}">Cancelar ${many ? 'la reserva' : 'turno'}</button>` : ''}
+        ${b.transfer ? '' : `<a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, `Hola! Tengo el turno ${b.code} (${b.service_name}, ${b.when}).`)}" target="_blank" rel="noopener">WhatsApp</a>`}
         ${['cancelled', 'expired'].includes(b.status) ? '<button class="btn solid" data-book>Reservar otro turno</button>' : ''}
       </div></div></div>`;
   } catch (e) { $('#drawer .dbody').innerHTML = `<p class="form-err" style="margin-top:20px">${esc(e.message)}</p>`; }
@@ -450,6 +529,8 @@ async function openAccount(mode) {
   if (mode) acc.mode = mode;
   openDrawer(`${head('Mi cuenta')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Mi cuenta' });
   try { ACC = await api('/api/account/me'); } catch { ACC = null; }
+  // Si el equipo salió del panel, ya no se muestra como sesión abierta.
+  if (acc.staff) { try { await api('/api/admin/me'); } catch { acc.staff = null; acc.mode = 'login'; } }
   renderAccount();
 }
 function demoHint() {
@@ -569,10 +650,27 @@ function bind() {
       return;
     }
     const back = t.closest('[data-back]');
-    if (back) { readBkForm(); bk.step = Number(back.dataset.back); bk.error = ''; return renderBooking(); }
+    if (back) {
+      readBkForm(); bk.error = '';
+      if (back.dataset.back === 'sum') { bk.step = 3; bk.service = null; return renderBooking(); }
+      bk.step = Number(back.dataset.back);
+      if (bk.step === 1 && bk.items.length) bk.service = null;
+      return renderBooking();
+    }
     // Pasos de la reserva
     const pick = t.closest('[data-pick]');
-    if (pick) { bk.service = SITE.services.find((s) => s.id === Number(pick.dataset.pick)); bk.step = 2; bk.days = []; bk.time = ''; bk.date = ''; bk.error = ''; renderBooking(); loadDays(); return; }
+    if (pick) { bk.service = SITE.services.find((s) => s.id === Number(pick.dataset.pick)); bk.pro = null; bk.step = 2; bk.days = []; bk.time = ''; bk.date = lockDate(); bk.error = ''; renderBooking(); loadDays(); return; }
+    const proB = t.closest('[data-pro]'); if (proB) { bk.pro = Number(proB.dataset.pro) || null; bk.time = ''; bk.days = []; return loadDays(); }
+    if (t.closest('[data-take]') && !t.closest('[data-take]').disabled) { readBkForm(); return takeItem(); }
+    const ed = t.closest('[data-edit-item]'); if (ed) { readBkForm(); return editItem(Number(ed.dataset.editItem)); }
+    const rm = t.closest('[data-rm-item]'); if (rm) { readBkForm(); bk.items.splice(Number(rm.dataset.rmItem), 1); return renderBooking(); }
+    if (t.closest('[data-add-item]')) { readBkForm(); Object.assign(bk, { step: 1, service: null, pro: null, filter: null, error: '' }); return renderBooking(); }
+    const cp = t.closest('[data-copy]'); if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copiado'); } catch { toast(cp.dataset.copy); } return; }
+    const ts = t.closest('[data-tsent]');
+    if (ts) { ts.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(ts.dataset.tsent)}/transfer-sent`, {}); toast('¡Gracias! La verificamos y te confirmamos'); showBooking(r.booking.token, r.booking); } catch (err) { toast(err.message); ts.disabled = false; } return; }
+    const pm = t.closest('[data-paymp]');
+    if (pm) { pm.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(pm.dataset.paymp)}/pay-mp`, {}); goPay(r.pay_url); } catch (err) { toast(err.message); pm.disabled = false; } return; }
+    if (t.matches('input[name="pay_method"]')) { readBkForm(); return renderBooking(); }
     if (t.closest('[data-allsvc]')) { bk.filter = null; return renderBooking(); }
     const day = t.closest('[data-day]'); if (day && !day.disabled) { bk.date = day.dataset.day; bk.time = ''; return renderBooking(); }
     if (t.closest('[data-more]')) return loadDays(true);

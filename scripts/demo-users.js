@@ -18,5 +18,5 @@ await withState(async (st) => {
     if (u.kind === 'customer' && !st.customers.some((x) => x.email === u.email)) await addCustomer(st, env, u);
   }
 });
-console.log(borrar ? 'Usuarios de prueba borrados.' : DEMO_USERS.map((u) => `${u.kind === 'staff' ? (u.role === 'admin' ? 'Administración' : 'Recepción') : 'Clienta'}: ${u.email} / ${u.password}`).join('\n'));
+console.log(borrar ? 'Usuarios de prueba borrados.' : DEMO_USERS.map((u) => `${u.kind === 'staff' ? ({ admin: 'Administración', staff: 'Recepción', pro: 'Profesional' }[u.role]) : 'Clienta'}: ${u.email} / ${u.password}`).join('\n'));
 process.exit(0);

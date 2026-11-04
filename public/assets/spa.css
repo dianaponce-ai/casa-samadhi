@@ -335,6 +335,23 @@ form.bk { display: grid; gap: 14px; padding-top: 6px; }
 .check { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; font-size: 13px; }
 .check input { margin-top: 3px; accent-color: var(--tinta); }
 .gift-apply { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+/* Reserva con varios servicios, profesionales y medio de pago */
+.times.pros { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.times.pros .time { padding-inline: 8px; overflow-wrap: anywhere; }
+.items { display: grid; gap: 8px; }
+.items .item { margin-top: 0; grid-template-columns: 1fr auto; }
+.items .item .n, .items .item .w { grid-column: 1; }
+.items .item .acts { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 6px; align-content: center; justify-items: end; }
+.add-item { margin-top: 10px; justify-self: start; }
+.paym { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; min-width: 0; }
+.paym legend { padding: 0; margin-bottom: 8px; }
+.paym .opt { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; padding: 12px 14px; border: 1px solid var(--linea); background: var(--papel); cursor: pointer; }
+.paym .opt:has(input:checked) { border-color: var(--tinta); background: var(--marfil); }
+.paym .opt input { margin-top: 4px; accent-color: var(--tinta); }
+.paym .opt b { font-weight: 500; display: block; }
+.paym .opt small { display: block; font-size: 12px; color: var(--suave); margin-top: 2px; line-height: 1.45; }
+.transfer { width: 100%; padding: 16px; background: var(--marfil); border-left: 2px solid var(--dorado); }
+.transfer .kv { margin-bottom: 10px; }
 .gift-ok { font-size: 13px; color: var(--oliva); }
 .amounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
 .amt { padding: 14px 8px; border: 1px solid var(--linea); background: var(--papel); display: grid; gap: 2px; text-align: center; }

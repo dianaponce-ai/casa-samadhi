@@ -6,6 +6,7 @@ const $ = (s, el = ROOT) => el.querySelector(s);
 const $$ = (s, el = ROOT) => [...el.querySelectorAll(s)];
 let ME = { role: 'admin' };
 const isAdmin = () => ME.role === 'admin';
+const isPro = () => ME.role === 'pro';
 let embedHash = 'agenda';
 const currentHash = () => (EMBED ? embedHash : location.hash.slice(1));
 const navTo = (h) => { if (EMBED) { embedHash = h; route(); } else location.hash = h; };
@@ -56,35 +57,42 @@ $('#logout').addEventListener('click', async () => { if (EMBED) return EMBED.exi
 ROOT.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#"]'); if (a && EMBED) { e.preventDefault(); navTo(a.getAttribute('href').slice(1)); } });
 
 // ── Navegación ───────────────────────────────────────────
-const SECTIONS = [['agenda', 'Agenda'], ['resumen', 'Resumen'], ['turnos', 'Turnos'], ['clientas', 'Clientas'], ['servicios', 'Servicios'], ['horarios', 'Horarios y bloqueos'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos'], ['contenido', 'Textos de la web'], ['emails', 'Emails'], ['arrepentimientos', 'Arrepentimientos'], ['configuracion', 'Configuración'], ['usuarios', 'Usuarios']];
-const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios']);
+const SECTIONS = [['agenda', 'Agenda'], ['resumen', 'Resumen'], ['turnos', 'Turnos'], ['clientas', 'Clientas'], ['servicios', 'Servicios'], ['profesionales', 'Profesionales'], ['horarios', 'Horarios y bloqueos'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos'], ['contenido', 'Textos de la web'], ['emails', 'Emails'], ['arrepentimientos', 'Arrepentimientos'], ['configuracion', 'Configuración'], ['usuarios', 'Usuarios'], ['historial', 'Historial de cambios']];
+const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'profesionales', 'profesional', 'historial']);
+// Lo que ve una profesional: solo sus turnos, sus servicios, sus comisiones y lo que hizo.
+const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['turnos', 'Mis turnos'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
+const PRO_ALLOWED = new Set([...PRO_SECTIONS.map(([k]) => k), 'turno']);
 let attention = 0;
 function renderNav(active) {
-  $('#nav').innerHTML = SECTIONS.filter(([k]) => isAdmin() || !ADMIN_ONLY.has(k)).map(([k, l]) => `<button data-nav="${k}" ${k === active ? 'aria-current="page"' : ''}>${l}${k === 'resumen' && attention ? `<span class="count">${attention}</span>` : ''}</button>`).join('');
+  const list = isPro() ? PRO_SECTIONS : SECTIONS.filter(([k]) => isAdmin() || !ADMIN_ONLY.has(k));
+  $('#nav').innerHTML = list.map(([k, l]) => `<button data-nav="${k}" ${k === active ? 'aria-current="page"' : ''}>${l}${k === 'resumen' && attention ? `<span class="count">${attention}</span>` : ''}</button>`).join('');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) navTo(b.dataset.nav); });
 if (!EMBED) window.addEventListener('hashchange', route);
 function route() {
-  let [sec = 'agenda', id] = currentHash().split('/');
+  let [sec = isPro() ? 'inicio' : 'agenda', id] = currentHash().split('/');
+  if (isPro() && !PRO_ALLOWED.has(sec)) sec = 'inicio';
   if (ADMIN_ONLY.has(sec) && !isAdmin()) sec = 'agenda';
-  renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas' }[sec] || sec);
+  renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas', profesional: 'profesionales' }[sec] || sec);
   const view = $('#view');
   view.innerHTML = '<p class="muted">Cargando…</p>';
-  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers }[sec] || viewAgenda;
+  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers,
+    profesionales: viewPros, profesional: () => viewPro(id), historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
   Promise.resolve(fn()).catch((err) => { view.innerHTML = `<div class="notice">${esc(err.message)}</div>`; });
   view.focus({ preventScroll: true });
   if (EMBED) EMBED.scrollTop?.(); else window.scrollTo(0, 0);
 }
-const STATUS = { pending_payment: 'Esperando seña', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
+const STATUS = { pending_payment: 'Esperando seña', pending_transfer: 'Esperando transferencia', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 const GSTATUS = { pending_payment: 'Esperando pago', active: 'Activa', used: 'Usada', expired: 'Vencida', cancelled: 'Anulada' };
 const pill = (s, map = STATUS) => `<span class="pill s-${s}">${esc(map[s] || s)}</span>`;
 let SERVICES = null, RESOURCES = null;
 async function services() { if (!SERVICES) { const r = await api('/services'); SERVICES = r.services; RESOURCES = r.resources; } return SERVICES; }
 
 // ── Agenda ───────────────────────────────────────────────
+let agendaPro = '';
 async function viewAgenda(date) {
   date = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : todayKey();
-  const [a, svcs] = await Promise.all([api('/agenda?date=' + date), services()]);
+  const [a, svcs] = await Promise.all([api('/agenda?date=' + date + (agendaPro && !isPro() ? '&pro=' + agendaPro : '')), isPro() ? Promise.resolve([]) : services()]);
   const open = a.hours.length ? Math.min(...a.hours.map((w) => toMin(w.from))) : 9 * 60;
   const close = a.hours.length ? Math.max(...a.hours.map((w) => toMin(w.to))) : 19 * 60;
   const first = Math.min(open, ...a.bookings.map((b) => toMin(b.start.slice(11)))), last = Math.max(close, ...a.bookings.map((b) => toMin(b.start.slice(11)) + b.duration));
@@ -92,51 +100,60 @@ async function viewAgenda(date) {
   const y = (m) => (m - from) * PX;
   const hoursLbl = []; for (let m = from; m <= to; m += 60) hoursLbl.push(`<span style="top:${y(m)}px">${String(m / 60).padStart(2, '0')}:00</span>`);
   const active = a.bookings.filter((b) => b.status !== 'cancelled');
+  const cols = isPro() ? a.resources.filter((r) => a.bookings.some((b) => b.resource === r.key)) : a.resources;
+  const resources = cols.length ? cols : a.resources.slice(0, 1);
   $('#view').innerHTML = `
-    <div class="page-head"><div><h1>Agenda</h1><div class="sub">${active.length} turno${active.length === 1 ? '' : 's'} · ${a.hours.length ? a.hours.map((w) => `${w.from} a ${w.to}`).join(' y ') : 'cerrado'}</div></div>
-      <div class="actions"><button class="btn primary" id="newBk">Cargar turno</button></div></div>
+    <div class="page-head"><div><h1>${isPro() ? 'Mi agenda' : 'Agenda'}</h1><div class="sub">${active.length} turno${active.length === 1 ? '' : 's'} · ${a.hours.length ? a.hours.map((w) => `${w.from} a ${w.to}`).join(' y ') : 'cerrado'}</div></div>
+      <div class="actions">${isPro() ? '' : `${a.pros?.length ? `<select id="agPro" aria-label="Profesional"><option value="">Todas las profesionales</option>${a.pros.map((p) => `<option value="${p.id}" ${String(p.id) === agendaPro ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>` : ''}<button class="btn primary" id="newBk">Cargar turno</button>`}</div></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-d="${addDay(date, -1)}">← Anterior</button><button class="btn sm" data-d="${todayKey()}">Hoy</button><button class="btn sm" data-d="${addDay(date, 1)}">Siguiente →</button><input type="date" id="agDate" value="${date}"><span class="t">${esc(capF(longDay(date)))}</span></div>
     <div id="bkForm"></div>
-    <div class="agenda" style="--cols:${a.resources.length};--h:${y(to)}px;--hour:${60 * PX}px">
-      <div class="colh"></div>${a.resources.map((r) => `<div class="colh">${esc(r.name)}${r.capacity > 1 ? ` · ${r.capacity} a la vez` : ''}</div>`).join('')}
+    <div class="agenda" style="--cols:${resources.length};--h:${y(to)}px;--hour:${60 * PX}px">
+      <div class="colh"></div>${resources.map((r) => `<div class="colh">${esc(r.name)}${r.capacity > 1 ? ` · ${r.capacity} a la vez` : ''}</div>`).join('')}
       <div class="times">${hoursLbl.join('')}</div>
-      ${a.resources.map((r) => {
-        const bks = a.bookings.filter((b) => b.resource === r.key);
+      ${resources.map((r) => {
+        const bks = a.bookings.filter((b) => b.resource === r.key || (isPro() && resources.length === 1 && !cols.length));
         const blocks = a.blocks.filter((k) => k.resource === 'all' || k.resource === r.key);
         return `<div class="col">${!a.hours.length && !bks.length ? '<div class="closed">Cerrado</div>' : ''}
           ${blocks.map((k) => { const s = k.from ? toMin(k.from) : from, e = k.to ? toMin(k.to) : to; return `<div class="blk" style="top:${y(Math.max(from, s))}px;height:${(Math.min(to, e) - Math.max(from, s)) * PX}px">Bloqueado${k.reason ? ` · ${esc(k.reason)}` : ''}</div>`; }).join('')}
-          ${bks.map((b, i) => { const s = toMin(b.start.slice(11)); const same = bks.filter((x, j) => j < i && toMin(x.start.slice(11)) < s + b.duration && s < toMin(x.start.slice(11)) + x.duration).length; return `<a class="ev s-${b.status}" href="#turno/${b.id}" style="top:${y(s)}px;height:${Math.max(26, b.duration * PX - 2)}px;${same ? `left:${4 + same * 18}px` : ''}"><b>${b.start.slice(11)} · ${esc(b.name)}</b>${esc(b.service_name)}${b.status !== 'confirmed' ? ` · ${esc(STATUS[b.status])}` : ''}</a>`; }).join('')}</div>`;
+          ${bks.map((b, i) => { const s = toMin(b.start.slice(11)); const same = bks.filter((x, j) => j < i && toMin(x.start.slice(11)) < s + b.duration && s < toMin(x.start.slice(11)) + x.duration).length; return `<a class="ev s-${b.status}" href="#turno/${b.id}" style="top:${y(s)}px;height:${Math.max(26, b.duration * PX - 2)}px;${same ? `left:${4 + same * 18}px` : ''}"><b>${b.start.slice(11)} · ${esc(b.name)}</b>${esc(b.service_name)}${b.pro_name && !isPro() ? ` · ${esc(b.pro_name)}` : ''}${b.status !== 'confirmed' ? ` · ${esc(STATUS[b.status])}` : ''}</a>`; }).join('')}</div>`;
       }).join('')}
     </div>
-    ${a.bookings.length ? `<div class="card" style="margin-top:14px"><h2>Lista del día</h2><div class="tablewrap"><table><tr><th>Hora</th><th>Clienta</th><th>Servicio</th><th>Estado</th><th class="r">Resta cobrar</th></tr>
-      ${a.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${b.start.slice(11)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}</td><td>${pill(b.status)}</td><td class="r n">${b.price ? fmt(Math.max(0, b.price - b.deposit_paid - b.gift_applied)) : '—'}</td></tr>`).join('')}</table></div></div>` : ''}`;
+    ${a.bookings.length ? `<div class="card" style="margin-top:14px"><h2>Lista del día</h2><div class="tablewrap"><table><tr><th>Hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Profesional</th>'}<th>Estado</th><th class="r">${isPro() ? 'Tu comisión' : 'Resta cobrar'}</th></tr>
+      ${a.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${b.start.slice(11)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}</td>${isPro() ? '' : `<td>${esc(b.pro_name || '—')}</td>`}<td>${pill(b.status)}</td><td class="r n">${isPro() ? (b.status === 'cancelled' ? '—' : fmt(b.commission)) : b.price ? fmt(Math.max(0, b.price - b.deposit_paid - b.gift_applied)) : '—'}</td></tr>`).join('')}</table></div></div>` : ''}`;
   $$('[data-d]').forEach((b) => (b.onclick = () => navTo('agenda/' + b.dataset.d)));
   $('#agDate').onchange = (e) => e.target.value && navTo('agenda/' + e.target.value);
   $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
-  $('#newBk').onclick = () => manualBooking($('#bkForm'), date, svcs);
+  if ($('#agPro')) $('#agPro').onchange = (e) => { agendaPro = e.target.value; viewAgenda(date); };
+  if ($('#newBk')) $('#newBk').onclick = () => manualBooking($('#bkForm'), date, svcs);
 }
 function manualBooking(box, date, svcs) {
   box.innerHTML = `<div class="card form" style="margin-bottom:14px"><h2>Cargar turno (WhatsApp, teléfono o en la casa)</h2>
     <div class="row"><label class="fl"><span>Servicio</span><select id="mSvc">${svcs.filter((s) => s.duration > 0).map((s) => `<option value="${s.id}">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''} (${s.duration} min)</option>`).join('')}</select></label>
-      <label class="fl"><span>Día</span><input type="date" id="mDate" value="${date}"></label><label class="fl"><span>Hora</span><select id="mTime"></select></label></div>
+      <label class="fl"><span>Profesional</span><select id="mPro"><option value="">La que esté libre</option></select></label></div>
+    <div class="row"><label class="fl"><span>Día</span><input type="date" id="mDate" value="${date}"></label><label class="fl"><span>Hora</span><select id="mTime"></select></label></div>
     <div class="row"><label class="fl"><span>Nombre</span><input id="mName"></label><label class="fl"><span>Teléfono</span><input id="mPhone" inputmode="tel"></label><label class="fl"><span>Email (opcional)</span><input id="mEmail" type="email"></label></div>
-    <div class="row"><label class="fl"><span>Seña recibida ($)</span><input id="mDep" type="number" min="0" value="0"></label><label class="fl"><span>Notas</span><input id="mNotes"></label></div>
+    <div class="row"><label class="fl"><span>Seña recibida ($)</span><input id="mDep" type="number" min="0" value="0"></label><label class="fl"><span>Cómo pagó la seña</span><select id="mPay"><option value="local">En la casa (efectivo o posnet)</option><option value="transfer">Transferencia</option><option value="mp">Mercado Pago</option></select></label><label class="fl"><span>Notas</span><input id="mNotes"></label></div>
     <label class="check"><input type="checkbox" id="mNotify"> Mandarle la confirmación por email</label>
     <label class="check"><input type="checkbox" id="mForce"> Cargar igual aunque el horario esté ocupado o fuera de horario</label>
     <p class="err" id="mErr"></p>
     <div class="actions"><button class="btn primary" id="mSave">Guardar turno</button><button class="btn" id="mCancel">Cancelar</button></div></div>`;
+  let lastSvc = null;
   const loadTimes = async () => {
-    const r = await api(`/slots?service=${$('#mSvc').value}&date=${$('#mDate').value}`);
+    const r = await api(`/slots?service=${$('#mSvc').value}&date=${$('#mDate').value}&pro=${$('#mPro').value}`);
+    if (lastSvc !== $('#mSvc').value) {
+      lastSvc = $('#mSvc').value;
+      $('#mPro').innerHTML = `<option value="">${r.pros.length ? 'La que esté libre' : 'Sin profesional asignada'}</option>${r.pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}`;
+    }
     $('#mTime').innerHTML = r.slots.length ? r.slots.map((t) => `<option>${t}</option>`).join('') : '<option value="">Sin horarios libres</option>';
     if (!r.slots.length) $('#mTime').insertAdjacentHTML('beforeend', Array.from({ length: 24 }, (_, i) => `<option>${String(8 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}</option>`).join(''));
   };
-  $('#mSvc').onchange = loadTimes; $('#mDate').onchange = loadTimes; loadTimes();
+  $('#mSvc').onchange = loadTimes; $('#mDate').onchange = loadTimes; $('#mPro').onchange = loadTimes; loadTimes();
   $('#mCancel').onclick = () => (box.innerHTML = '');
   $('#mSave').onclick = async () => {
     $('#mErr').textContent = '';
     try {
-      const r = await api('/bookings', { method: 'POST', body: { service_id: Number($('#mSvc').value), date: $('#mDate').value, time: $('#mTime').value, name: $('#mName').value, phone: $('#mPhone').value, email: $('#mEmail').value, deposit_paid: $('#mDep').value, notes: $('#mNotes').value, notify: $('#mNotify').checked, force: $('#mForce').checked } });
-      toast(`Turno ${r.booking.code} cargado`); navTo('agenda/' + $('#mDate').value);
+      const r = await api('/bookings', { method: 'POST', body: { service_id: Number($('#mSvc').value), pro_id: Number($('#mPro').value) || null, date: $('#mDate').value, time: $('#mTime').value, name: $('#mName').value, phone: $('#mPhone').value, email: $('#mEmail').value, deposit_paid: $('#mDep').value, pay_method: $('#mPay').value, notes: $('#mNotes').value, notify: $('#mNotify').checked, force: $('#mForce').checked } });
+      toast(`Turno ${r.booking.code} cargado${r.booking.pro_name ? ` con ${r.booking.pro_name}` : ''}`); navTo('agenda/' + $('#mDate').value);
     } catch (e) { $('#mErr').textContent = e.message; }
   };
 }
@@ -144,10 +161,11 @@ function manualBooking(box, date, svcs) {
 // ── Resumen ──────────────────────────────────────────────
 async function viewDashboard() {
   const d = await api('/dashboard');
-  attention = d.attention.length; renderNav('resumen');
+  attention = d.attention.length + (d.transfers?.length || 0); renderNav('resumen');
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Resumen</h1><div class="sub">${esc(capF(longDay(d.today)))}</div></div><div class="actions"><a class="btn primary" href="#agenda">Ver la agenda</a></div></div>
     ${d.mock ? '<div class="notice">Mercado Pago está en <b>modo prueba</b>: las señas y las gift cards se pagan con un pago simulado. Cargá MP_ACCESS_TOKEN para cobrar de verdad.</div>' : ''}
+    ${d.transfers?.length ? `<div class="card" style="margin-bottom:14px;border-color:var(--warn)"><h2>Transferencias por verificar</h2><table>${d.transfers.map((b) => `<tr class="click" data-href="turno/${b.id}"><td>${esc(b.code)}</td><td>${esc(b.name)}</td><td>${esc(b.service_name)} · ${shortWhen(b.start)}</td><td class="r n">${fmt(b.deposit_due)}</td><td>${b.transfer_notified ? '<span class="pill s-confirmed">Avisó que transfirió</span>' : '<span class="pill s-pending_transfer">Sin aviso</span>'}</td></tr>`).join('')}</table><p class="small muted" style="margin-top:8px">Abrí cada una para confirmarla cuando veas la plata en la cuenta.</p></div>` : ''}
     ${d.attention.length ? `<div class="card" style="margin-bottom:14px;border-color:var(--bad)"><h2>Para revisar</h2><table>${d.attention.map((b) => `<tr class="click" data-href="turno/${b.id}"><td>${esc(b.code)}</td><td>${esc(b.name)}</td><td>${esc(b.service_name)} · ${shortWhen(b.start)}</td><td>${b.status === 'attention' ? 'Pagó la seña fuera de término y el horario estaba ocupado' : `Cancelado con seña de ${fmt(b.deposit_paid)}: devolver o pasar a otra fecha`}</td></tr>`).join('')}</table></div>` : ''}
     <div class="grid g4">
       <div class="card kpi accent"><div class="l">Turnos hoy</div><div class="v">${num(d.todays.filter((b) => b.status !== 'cancelled').length)}</div><div class="l">${num(d.week)} en los próximos 7 días</div></div>
@@ -163,37 +181,81 @@ async function viewDashboard() {
 }
 
 // ── Turnos ───────────────────────────────────────────────
+let PROS_CACHE = null;
+async function prosList() { if (!PROS_CACHE) { try { PROS_CACHE = (await api('/agenda?date=' + todayKey())).pros || []; } catch { PROS_CACHE = []; } } return PROS_CACHE; }
 async function viewBookings() {
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Turnos</h1></div></div>
-    <div class="toolbar"><input id="bq" placeholder="Buscar por nombre, email, teléfono o código"><select id="bs"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+  const pros = isPro() ? [] : await prosList();
+  $('#view').innerHTML = `<div class="page-head"><div><h1>${isPro() ? 'Mis turnos' : 'Turnos'}</h1></div></div>
+    <div class="toolbar"><input id="bq" placeholder="Buscar por nombre${isPro() ? '' : ', email, teléfono'} o código"><select id="bs"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+      ${pros.length ? `<select id="bp"><option value="">Todas las profesionales</option>${pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>` : ''}
       <select id="bw"><option value="next">Próximos</option><option value="past">Anteriores</option><option value="all">Todos</option></select></div><div id="blist"><p class="muted">Cargando…</p></div>`;
   const load = async () => {
     const w = $('#bw').value, t = todayKey();
-    const qs = new URLSearchParams({ q: $('#bq').value, status: $('#bs').value, ...(w === 'next' ? { from: t, order: 'asc' } : w === 'past' ? { to: addDay(t, -1) } : {}) });
+    const qs = new URLSearchParams({ q: $('#bq').value, status: $('#bs').value, pro: $('#bp')?.value || '', ...(w === 'next' ? { from: t, order: 'asc' } : w === 'past' ? { to: addDay(t, -1) } : {}) });
     const r = await api('/bookings?' + qs);
-    $('#blist').innerHTML = r.bookings.length ? `<div class="card tablewrap"><table><tr><th>Código</th><th>Día y hora</th><th>Clienta</th><th>Servicio</th><th>Estado</th><th class="r">Precio</th><th class="r">Seña</th></tr>
-      ${r.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td>${esc(b.code)}</td><td class="n">${shortWhen(b.start)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}</td><td>${pill(b.status)}${b.refund_pending ? ' <span class="pill s-attention">Devolver seña</span>' : ''}</td><td class="r n">${b.price ? fmt(b.price) : '—'}</td><td class="r n">${b.deposit_paid ? fmt(b.deposit_paid) : '—'}</td></tr>`).join('')}</table></div>` : '<div class="empty card">No hay turnos con ese filtro.</div>';
+    $('#blist').innerHTML = r.bookings.length ? `<div class="card tablewrap"><table><tr><th>Código</th><th>Día y hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Profesional</th>'}<th>Estado</th>${isPro() ? '<th class="r">Precio</th><th class="r">Tu comisión</th>' : '<th class="r">Precio</th><th class="r">Seña</th>'}</tr>
+      ${r.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td>${esc(b.code)}</td><td class="n">${shortWhen(b.start)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}${b.group ? ' <span class="pill" title="Reservado junto con otro servicio">+</span>' : ''}</td>${isPro() ? '' : `<td>${esc(b.pro_name || '—')}</td>`}<td>${pill(b.status)}${b.refund_pending ? ' <span class="pill s-attention">Devolver seña</span>' : ''}</td>
+        ${isPro() ? `<td class="r n">${b.price ? fmt(b.price) : '—'}</td><td class="r n">${['cancelled', 'no_show'].includes(b.status) ? '—' : fmt(b.commission)}</td>` : `<td class="r n">${b.price ? fmt(b.price) : '—'}</td><td class="r n">${b.deposit_paid ? fmt(b.deposit_paid) : '—'}${b.pay_method_label && b.deposit_paid ? `<div class="small muted">${esc(b.pay_method_label)}</div>` : ''}</td>`}</tr>`).join('')}</table></div>` : '<div class="empty card">No hay turnos con ese filtro.</div>';
     $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   };
   let t; $('#bq').oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };
-  $('#bs').onchange = load; $('#bw').onchange = load;
+  $('#bs').onchange = load; $('#bw').onchange = load; if ($('#bp')) $('#bp').onchange = load;
   load();
 }
-async function viewBooking(id) {
-  const { booking: b, emails } = await api('/bookings/' + id);
-  const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
-  const wa = `https://wa.me/549${String(b.phone).replace(/\D/g, '').replace(/^0/, '').replace(/^549?/, '')}`;
+const historyList = (b) => `<ul class="history">${b.history.map((h) => `<li><span>${at(h.at)}</span><span>${esc(h.text)}</span></li>`).join('') || '<li class="muted">Sin movimientos.</li>'}</ul>`;
+const auditList = (list) => (list?.length ? `<ul class="history">${list.map((a) => `<li><span>${at(a.at)}</span><span><b>${esc(a.user)}</b>${a.role_label ? ` <span class="muted small">(${esc(a.role_label)})</span>` : ''} · ${esc(a.action)}</span></li>`).join('')}</ul>` : '<p class="muted small">Sin cambios registrados.</p>');
+/** Lo que ve una profesional de un turno suyo: los datos para atenderlo, su comisión y la opción de cancelarlo. */
+async function viewProBooking(id) {
+  const { booking: b, audit } = await api('/bookings/' + id);
+  const canCancel = ['confirmed', 'pending_payment', 'pending_transfer', 'attention'].includes(b.status);
   $('#view').innerHTML = `
-    <div class="page-head"><div><h1>Turno ${esc(b.code)}</h1><div class="sub">${pill(b.status)} ${b.refund_pending ? '<span class="pill s-attention">Seña por devolver</span>' : ''} · ${b.source === 'panel' ? 'cargado en el panel' : 'reservado en la web'} el ${at(b.created_at)}</div></div>
-      <div class="actions"><a class="btn" href="#agenda/${b.start.slice(0, 10)}">Ver en la agenda</a></div></div>
+    <div class="page-head"><div><a class="small" href="#turnos">← Mis turnos</a><h1 style="margin-top:6px">Turno ${esc(b.code)}</h1><div class="sub">${pill(b.status)}</div></div>
+      <div class="actions"><a class="btn" href="#agenda/${b.start.slice(0, 10)}">Ver en mi agenda</a></div></div>
     <div class="grid g2">
       <div class="card form"><h2>${esc(b.service_name)}</h2>
         <dl class="kv"><dt>Día y hora</dt><dd>${esc(capF(longDay(b.start.slice(0, 10))))} · ${b.start.slice(11)} h</dd><dt>Duración</dt><dd>${b.duration} min</dd>
-          <dt>Precio</dt><dd>${b.price ? fmt(b.price) : '—'}</dd>${b.gift_applied ? `<dt>Gift card</dt><dd>− ${fmt(b.gift_applied)} (${esc(b.gift_code)})</dd>` : ''}<dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}${b.payment_id ? ` <span class="small muted">· pago ${esc(b.payment_id)}</span>` : ''}</dd>
-          <dt>Resta cobrar en la casa</dt><dd><b>${fmt(rest)}</b></dd></dl>
-        <div class="row"><label class="fl"><span>Estado</span><select id="bStatus">${Object.entries(STATUS).map(([k, l]) => `<option value="${k}" ${k === b.status ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-          <label class="fl"><span>Notas internas</span><input id="bNotes" value="${esc(b.notes)}"></label></div>
+          <dt>Clienta</dt><dd>${esc(b.name)}</dd><dt>Teléfono</dt><dd>${esc(b.phone || '—')}</dd>${b.notes ? `<dt>Notas</dt><dd>${esc(b.notes)}</dd>` : ''}
+          <dt>Precio</dt><dd>${b.price ? fmt(b.price) : '—'}</dd><dt>Tu comisión</dt><dd><b>${['cancelled', 'no_show'].includes(b.status) ? '—' : `${fmt(b.commission)} (${b.percent}%)`}</b></dd></dl>
+        ${canCancel ? `<h2 style="margin-top:8px">Cancelar el turno</h2>
+          <label class="fl"><span>Motivo (queda registrado y le llega al equipo)</span><input id="pcReason" placeholder="Ej.: no puedo venir por enfermedad"></label>
+          <p class="err" id="pcErr"></p><div class="actions"><button class="btn danger" id="pcBtn">Cancelar turno</button></div>
+          <p class="small muted">A la clienta le llega un email avisándole. Para cambiar el horario u otro dato, hablá con administración.</p>` : ''}
+      </div>
+      <div class="card"><h2>Historial del turno</h2>${historyList(b)}<h2 style="margin-top:14px">Cambios registrados</h2>${auditList(audit)}</div>
+    </div>`;
+  $('#pcBtn')?.addEventListener('click', (e) => confirmInline(e.target, '¿Cancelar este turno? Se le avisa a la clienta.', async () => {
+    $('#pcErr').textContent = '';
+    try { await api('/bookings/' + b.id, { method: 'PATCH', body: { status: 'cancelled', reason: $('#pcReason').value } }); toast('Turno cancelado'); viewProBooking(b.id); } catch (err) { $('#pcErr').textContent = err.message; }
+  }, 'Sí, cancelar'));
+}
+async function viewBooking(id) {
+  if (isPro()) return viewProBooking(id);
+  const { booking: b, emails, group, group_due, pros, audit } = await api('/bookings/' + id);
+  const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
+  const wa = `https://wa.me/549${String(b.phone).replace(/\D/g, '').replace(/^0/, '').replace(/^549?/, '')}`;
+  const transfer = b.status === 'pending_transfer' || (b.status === 'expired' && b.pay_method === 'transfer');
+  $('#view').innerHTML = `
+    <div class="page-head"><div><h1>Turno ${esc(b.code)}</h1><div class="sub">${pill(b.status)} ${b.refund_pending ? '<span class="pill s-attention">Seña por devolver</span>' : ''} · ${b.source === 'panel' ? 'cargado en el panel' : 'reservado en la web'} el ${at(b.created_at)}</div></div>
+      <div class="actions"><a class="btn" href="#agenda/${b.start.slice(0, 10)}">Ver en la agenda</a></div></div>
+    ${transfer ? `<div class="card form" style="margin-bottom:14px;border-color:var(--warn)"><h2>Transferencia por verificar</h2>
+      <p>${esc(b.name)} eligió pagar la seña por transferencia: <b>${fmt(group_due || b.deposit_due)}</b>${group.length > 1 ? ' por toda la reserva' : ''}.${b.transfer_notified ? ` <b>Avisó que ya transfirió</b> (${at(b.transfer_notified)}).` : ' Todavía no avisó que transfirió.'} ${b.status === 'expired' ? 'El plazo venció: si la plata llegó igual, confirmala y se revisa si el horario sigue libre.' : `El turno queda guardado hasta el ${at(b.hold_until)}`}</p>
+      <div class="row"><label class="fl"><span>Monto recibido ($)</span><input id="tAmt" type="number" min="0" value="${group_due || b.deposit_due}"></label></div>
+      <div class="actions"><button class="btn primary" id="tOk">Llegó la transferencia: confirmar</button><button class="btn danger" id="tNo">No llegó: cancelar</button></div>
+      <p class="small muted">Al confirmar, a la clienta le llega el email de turno confirmado y a la profesional, el aviso de su turno.</p></div>` : ''}
+    <div class="grid g2">
+      <div class="card form"><h2>${esc(b.service_name)}</h2>
+        ${group.length > 1 ? `<p class="small muted">Reservado junto con: ${group.filter((x) => x.id !== b.id).map((x) => `<a href="#turno/${x.id}">${esc(x.code)} · ${esc(x.service_name)} ${x.start.slice(11)} h</a>`).join(' · ')}</p>` : ''}
+        <dl class="kv"><dt>Día y hora</dt><dd>${esc(capF(longDay(b.start.slice(0, 10))))} · ${b.start.slice(11)} h</dd><dt>Duración</dt><dd>${b.duration} min</dd>
+          <dt>Precio</dt><dd>${b.price ? fmt(b.price) : '—'}</dd>${b.gift_applied ? `<dt>Gift card</dt><dd>− ${fmt(b.gift_applied)} (${esc(b.gift_code)})</dd>` : ''}<dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}${b.pay_method_label && b.pay_method !== 'none' ? ` · ${esc(b.pay_method_label)}` : ''}${b.payment_id ? ` <span class="small muted">· pago ${esc(b.payment_id)}</span>` : ''}</dd>
+          <dt>Resta cobrar en la casa</dt><dd><b>${fmt(rest)}</b></dd>
+          ${b.pro_id ? `<dt>Comisión</dt><dd>${fmt(b.commission)} para ${esc(b.pro_name)} (${b.commission_percent ?? b.commission_percent_now}%${b.commission_percent != null ? ', fijada al realizarse' : ''})</dd>` : ''}</dl>
+        <div class="row"><label class="fl"><span>Profesional</span><select id="bPro"><option value="">Sin asignar</option>${pros.map((p) => `<option value="${p.id}" ${p.id === b.pro_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="fl"><span>Estado</span><select id="bStatus">${Object.entries(STATUS).map(([k, l]) => `<option value="${k}" ${k === b.status ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+        <label class="fl"><span>Notas internas</span><input id="bNotes" value="${esc(b.notes)}"></label>
+        <label class="fl" id="bReasonWrap" hidden><span>Motivo de la cancelación (queda registrado)</span><input id="bReason"></label>
         ${b.refund_pending ? '<label class="check"><input type="checkbox" id="bRefund" checked> La seña todavía no se devolvió ni se pasó a otro turno</label>' : ''}
+        <label class="check"><input type="checkbox" id="bForce"> Asignar igual aunque la profesional tenga otro turno a esa hora</label>
+        <p class="err" id="bErr"></p>
         <div class="actions"><button class="btn primary" id="bSave">Guardar</button></div>
         <h2 style="margin-top:8px">Reprogramar</h2>
         <div class="row"><label class="fl"><span>Día</span><input type="date" id="rDate" value="${b.start.slice(0, 10)}"></label><label class="fl"><span>Hora</span><select id="rTime"></select></label></div>
@@ -202,23 +264,28 @@ async function viewBooking(id) {
       </div>
       <div class="card form"><h2>Clienta</h2>
         <dl class="kv"><dt>Nombre</dt><dd>${esc(b.name)}</dd><dt>Teléfono</dt><dd>${esc(b.phone)} ${b.phone ? `· <a href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</dd><dt>Email</dt><dd>${b.email ? `<a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : '—'}</dd></dl>
-        <h2>Historial</h2><ul class="history">${b.history.map((h) => `<li><span>${at(h.at)}</span><span>${esc(h.text)}</span></li>`).join('') || '<li class="muted">Sin movimientos.</li>'}</ul>
+        <h2>Historial</h2>${historyList(b)}
+        <h2>Quién cambió qué</h2>${auditList(audit)}
         ${emails.length ? `<h2>Emails</h2><ul class="history">${emails.map((m) => `<li><span>${at(m.at)}</span><span>${esc(m.subject)} · <i>${esc(m.status)}</i></span></li>`).join('')}</ul>` : ''}
       </div>
     </div>`;
   const loadTimes = async () => {
-    const r = await api(`/slots?service=${b.service_id}&date=${$('#rDate').value}&ignore=${b.id}`);
+    const r = await api(`/slots?service=${b.service_id}&date=${$('#rDate').value}&ignore=${b.id}${b.pro_id ? `&pro=${b.pro_id}` : ''}`);
     const cur = $('#rDate').value === b.start.slice(0, 10) ? b.start.slice(11) : '';
     $('#rTime').innerHTML = (cur && !r.slots.includes(cur) ? [cur, ...r.slots] : r.slots).map((t) => `<option ${t === cur ? 'selected' : ''}>${t}</option>`).join('') || '<option value="">Sin horarios libres</option>';
   };
   $('#rDate').onchange = loadTimes; loadTimes();
+  $('#bStatus').onchange = () => ($('#bReasonWrap').hidden = $('#bStatus').value !== 'cancelled');
   $('#bSave').onclick = async () => {
-    try { await api('/bookings/' + b.id, { method: 'PATCH', body: { status: $('#bStatus').value, notes: $('#bNotes').value, ...($('#bRefund') ? { refund_pending: $('#bRefund').checked } : {}) } }); toast('Guardado'); viewBooking(b.id); } catch (e) { toast(e.message, true); }
+    $('#bErr').textContent = '';
+    try { await api('/bookings/' + b.id, { method: 'PATCH', body: { status: $('#bStatus').value, pro_id: Number($('#bPro').value) || null, force: $('#bForce').checked, reason: $('#bReason').value, notes: $('#bNotes').value, ...($('#bRefund') ? { refund_pending: $('#bRefund').checked } : {}) } }); toast('Guardado'); viewBooking(b.id); } catch (e) { $('#bErr').textContent = e.message; }
   };
   $('#rSave').onclick = async () => {
     $('#rErr').textContent = '';
     try { await api('/bookings/' + b.id, { method: 'PATCH', body: { date: $('#rDate').value, time: $('#rTime').value, notify: $('#rNotify').checked, force: $('#rForce').checked } }); toast('Turno reprogramado'); viewBooking(b.id); } catch (e) { $('#rErr').textContent = e.message; }
   };
+  $('#tOk')?.addEventListener('click', async (e) => { e.target.disabled = true; try { await api('/bookings/' + b.id, { method: 'PATCH', body: { transfer: 'confirm', amount: $('#tAmt').value } }); toast('Transferencia confirmada: le avisamos a la clienta'); viewBooking(b.id); } catch (err) { toast(err.message, true); e.target.disabled = false; } });
+  $('#tNo')?.addEventListener('click', (e) => confirmInline(e.target, '¿Cancelar la reserva porque no llegó la transferencia?', async () => { try { await api('/bookings/' + b.id, { method: 'PATCH', body: { transfer: 'reject' } }); toast('Reserva cancelada'); viewBooking(b.id); } catch (err) { toast(err.message, true); } }, 'Sí, cancelar'));
 }
 
 // ── Clientas (CRM) ───────────────────────────────────────
@@ -307,7 +374,7 @@ async function viewServices(editId = null) {
         <label class="fl"><span>WhatsApp propio (opcional)</span><input id="eWa" value="${esc(ed.whatsapp)}" placeholder="Si lo atiende otra persona"></label></div>
       <label class="fl"><span>Descripción corta</span><textarea id="eShort" rows="2">${esc(ed.short)}</textarea></label>
       <label class="fl"><span>Qué incluye (uno por línea)</span><textarea id="eInc" rows="4">${esc((ed.includes || []).join('\n'))}</textarea></label>
-      <div class="row"><label class="fl"><span>Foto</span><select id="eImg"><option value="">Sin foto</option>${['headspa-ritual', 'headspa-agua', 'headspa-joya', 'camilla', 'manicuria-cafe', 'unas', 'barras-access', 'deco-cristal', 'cafeteria', 'cafe-plantas', 'vitrina'].map((f) => `<option value="media/${f}.webp" ${ed.image === `media/${f}.webp` ? 'selected' : ''}>${f}</option>`).join('')}${ed.image && !ed.image.startsWith('media/') ? `<option selected value="${esc(ed.image)}">${esc(ed.image)}</option>` : ''}</select></label>
+      <div class="row"><label class="fl"><span>Foto</span><select id="eImg"><option value="">Sin foto</option>${['headspa-ritual', 'headspa-agua', 'headspa-joya', 'camilla', 'manicuria-cafe', 'manicuria-lampara', 'unas', 'barras-access', 'deco-cristal', 'cafeteria', 'cafe-plantas', 'vitrina'].map((f) => `<option value="media/${f}.webp" ${ed.image === `media/${f}.webp` ? 'selected' : ''}>${f}</option>`).join('')}${ed.image && !ed.image.startsWith('media/') ? `<option selected value="${esc(ed.image)}">${esc(ed.image)}</option>` : ''}</select></label>
         <div class="fl"><span>Días en que se ofrece</span><div class="chips">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" data-day="${d}" ${!ed.days?.length || ed.days.includes(d) ? 'checked' : ''}> ${DAYS[d].slice(0, 3)}</label>`).join('')}</div></div></div>
       <label class="check"><input type="checkbox" id="eVis" ${ed.visible ? 'checked' : ''}> Visible en la web</label>
       <p class="err" id="eErr"></p>
@@ -553,7 +620,7 @@ async function viewWithdrawals() {
 // ── Configuración ────────────────────────────────────────
 async function viewSettings() {
   const { settings: S } = await api('/settings');
-  const s = S.site, b = S.booking, g = S.giftcards;
+  const s = S.site, b = S.booking, g = S.giftcards, p = S.pay || {};
   const inp = (k, label, v, extra = '') => `<label class="fl"><span>${label}</span><input data-k="${k}" value="${esc(v)}" ${extra}></label>`;
   $('#view').innerHTML = `<div class="page-head"><div><h1>Configuración</h1></div><div class="actions"><button class="btn primary" id="setSave">Guardar cambios</button></div></div>
     <div class="grid g2">
@@ -568,11 +635,18 @@ async function viewSettings() {
         <div class="row">${inp('booking.slotStep', 'Turnos cada (minutos)', b.slotStep, 'type="number" min="5" step="5"')}${inp('booking.holdMinutes', 'Minutos para pagar la seña', b.holdMinutes, 'type="number" min="10"')}${inp('booking.cancelHours', 'Cancelar online hasta (horas antes)', b.cancelHours, 'type="number" min="0"')}</div>
         <div class="row">${inp('booking.reminderHours', 'Recordatorio (horas antes)', b.reminderHours, 'type="number" min="0"')}${inp('booking.staffEmails', 'Avisos de turnos nuevos a (emails separados por coma)', b.staffEmails)}</div>
         <p class="small muted">Con seña en 0% los turnos online se confirman sin pagar nada.</p></div>
+      <div class="card form"><h2>Medios de pago de la seña</h2>
+        <label class="check"><input type="checkbox" data-k="pay.mpEnabled" ${p.mpEnabled !== false ? 'checked' : ''}> Mercado Pago (se confirma solo al acreditarse)</label>
+        <label class="check"><input type="checkbox" data-k="pay.transferEnabled" ${p.transferEnabled ? 'checked' : ''}> Transferencia bancaria (la confirmás vos desde el turno o el Resumen)</label>
+        <div class="row">${inp('pay.alias', 'Alias', p.alias)}${inp('pay.cbu', 'CBU / CVU (22 números)', p.cbu, 'inputmode="numeric"')}</div>
+        <div class="row">${inp('pay.holder', 'Titular de la cuenta', p.holder)}${inp('pay.bank', 'Banco o billetera', p.bank)}${inp('pay.cuit', 'CUIT', p.cuit)}</div>
+        <div class="row">${inp('pay.transferHoldHours', 'Horas que se guarda el turno esperando la transferencia', p.transferHoldHours, 'type="number" min="1" max="72"')}</div>
+        <p class="small muted">La transferencia aparece en la web solo si hay alias o CBU cargado. La clienta ve estos datos al reservar y en el email.</p></div>
       <div class="card form"><h2>Gift cards</h2><label class="check"><input type="checkbox" data-k="giftcards.enabled" ${g.enabled ? 'checked' : ''}> Vender gift cards en la web</label>
         ${inp('giftcards.amounts', 'Montos sugeridos (separados por coma)', g.amounts.join(', '))}<div class="row">${inp('giftcards.min', 'Monto mínimo', g.min, 'type="number" min="0"')}${inp('giftcards.validityDays', 'Validez (días)', g.validityDays, 'type="number" min="7"')}</div></div>
     </div>`;
   $('#setSave').onclick = async () => {
-    const groups = { site: {}, booking: {}, giftcards: {} };
+    const groups = { site: {}, booking: {}, pay: {}, giftcards: {} };
     for (const el of $$('[data-k]')) { const [grp, k] = el.dataset.k.split('.'); groups[grp][k] = el.type === 'checkbox' ? el.checked : el.value; }
     groups.giftcards.amounts = String(groups.giftcards.amounts).split(/[,;\s]+/).map((x) => Number(x.replace(/\D/g, ''))).filter(Boolean);
     try { for (const [k, v] of Object.entries(groups)) await api('/settings/' + k, { method: 'PUT', body: v }); toast('Configuración guardada'); } catch (e) { toast(e.message, true); }
@@ -580,12 +654,180 @@ async function viewSettings() {
 }
 async function viewUsers() {
   const r = await api('/users');
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Usuarios</h1><div class="sub">Recepción ve la agenda, turnos, clientas, servicios, horarios, gift cards y eventos. Administración, además, la configuración.</div></div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Usuarios</h1><div class="sub">Recepción ve la agenda, turnos, clientas, servicios, horarios, gift cards y eventos. Administración, además, la configuración, las profesionales y el historial de cambios. Las profesionales se cargan en <a href="#profesionales">Profesionales</a>.</div></div></div>
     <div class="grid g2"><div class="card"><table>${r.users.map((u) => `<tr><td>${esc(u.name || '—')}<div class="small muted">${esc(u.email)}</div></td><td>${esc(u.role_label)}</td><td class="r">${u.id === ME.id ? '<span class="muted small">Vos</span>' : `<button class="btn sm danger" data-rmu="${u.id}">Quitar</button>`}</td></tr>`).join('')}</table></div>
       <div class="card form"><h2>Nuevo usuario</h2><label class="fl"><span>Nombre</span><input id="uN"></label><label class="fl"><span>Email</span><input id="uE" type="email"></label><label class="fl"><span>Contraseña (10+ caracteres)</span><input id="uP" type="password" autocomplete="new-password"></label>
         <label class="fl"><span>Rol</span><select id="uR">${Object.entries(r.roles).map(([k, l]) => `<option value="${k}" ${k === 'staff' ? 'selected' : ''}>${l}</option>`).join('')}</select></label><p class="err" id="uErr"></p><div class="actions"><button class="btn primary" id="uAdd">Crear</button></div></div></div>`;
   $('#uAdd').onclick = async () => { try { await api('/users', { method: 'POST', body: { name: $('#uN').value, email: $('#uE').value, password: $('#uP').value, role: $('#uR').value } }); toast('Usuario creado'); viewUsers(); } catch (e) { $('#uErr').textContent = e.message; } };
   $$('[data-rmu]').forEach((b) => (b.onclick = (e) => confirmInline(e.target, '¿Quitar el acceso?', async () => { try { await api('/users/' + b.dataset.rmu, { method: 'DELETE' }); viewUsers(); } catch (err) { toast(err.message, true); } }, 'Quitar')));
+}
+
+// ── Profesionales (administración) ───────────────────────
+const monthKey = () => todayKey().slice(0, 7);
+const monthLabel = (m) => { const [y, mm] = m.split('-').map(Number); return `${MONTHS[mm - 1]} ${y}`; };
+const addMonth = (m, n) => { const [y, mm] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mm - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+const payText = (p) => (p.type === 'basico_comision' ? `Básico ${fmt(p.base)} + ${p.percent}% de comisión` : `${p.percent}% de comisión`);
+let prosMonth = '';
+async function viewPros(editId = null) {
+  prosMonth = prosMonth || monthKey();
+  const r = await api('/pros?month=' + prosMonth);
+  const act = r.pros.filter((p) => p.active), off = r.pros.filter((p) => !p.active);
+  const tot = act.reduce((a, p) => ({ total: a.total + p.month.total, projected: a.projected + p.month.projected, sales: a.sales + p.month.sales }), { total: 0, projected: 0, sales: 0 });
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Profesionales</h1><div class="sub">Quién hace cada servicio, sus datos, cómo se le paga y cuánto lleva cobrado. Cada una entra con su usuario y ve solo sus turnos y sus comisiones.</div></div>
+      <div class="actions"><button class="btn primary" id="pNew">Nueva profesional</button></div></div>
+    <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(prosMonth, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(prosMonth, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(prosMonth)))}</span></div>
+    <div id="pEd"></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      <div class="card kpi accent"><div class="l">Profesionales activas</div><div class="v">${act.length}</div></div>
+      <div class="card kpi"><div class="l">Servicios realizados · ${esc(monthLabel(prosMonth))}</div><div class="v">${fmt(tot.sales)}</div></div>
+      <div class="card kpi"><div class="l">A pagar por lo realizado</div><div class="v">${fmt(tot.total)}</div><div class="l">básicos + comisiones</div></div>
+      <div class="card kpi"><div class="l">Proyectado del mes</div><div class="v">${fmt(tot.projected)}</div><div class="l">con los turnos que faltan</div></div>
+    </div>
+    ${r.pros.length ? `<div class="card tablewrap"><table><tr><th>Profesional</th><th>Servicios</th><th>Forma de pago</th><th class="r">Realizados</th><th class="r">Comisión ganada</th><th class="r">A cobrar</th><th class="r">Por venir</th></tr>
+      ${[...act, ...off].map((p) => `<tr class="click" data-href="profesional/${p.id}"><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill s-cancelled">De baja</span>'}${p.has_access ? '' : ' <span class="pill" title="No tiene usuario para entrar al panel">Sin acceso</span>'}<div class="small muted">${esc(p.specialty || p.phone || p.email)}</div></td>
+        <td class="small">${esc(p.service_names.join(', ') || '—')}</td><td class="small">${esc(payText(p.pay))}</td><td class="r n">${p.month.done}</td><td class="r n">${fmt(p.month.earned)}</td><td class="r n"><b>${fmt(p.month.total)}</b></td><td class="r n">${p.month.next ? `${fmt(p.month.upcoming)}<div class="small muted">${p.month.next} turno${p.month.next === 1 ? '' : 's'}</div>` : '—'}</td></tr>`).join('')}</table></div>`
+      : '<div class="empty card">Todavía no cargaste profesionales. Cuando las cargues con sus servicios, cada turno queda asignado a quien lo atiende y se calcula su comisión.</div>'}`;
+  $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPros(); }));
+  $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+  $('#pNew').onclick = () => proForm($('#pEd'), null, r);
+  if (editId === 'new') proForm($('#pEd'), null, r);
+}
+/** Formulario de alta o edición: datos personales, acceso al panel, servicios y forma de pago. */
+function proForm(box, p, meta) {
+  const v = p || { name: '', email: '', phone: '', dni: '', cuit: '', birthday: '', address: '', alias: '', specialty: '', notes: '', services: [], pay: { type: 'comision', percent: 40, base: 0 }, active: true, has_access: false };
+  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias' };
+  const byCat = {}; for (const s of meta.services) (byCat[s.category] = byCat[s.category] || []).push(s);
+  const inp = (k, label, type = 'text', extra = '') => `<label class="fl"><span>${label}</span><input id="pf_${k}" type="${type}" value="${esc(v[k] || '')}" ${extra}></label>`;
+  box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva profesional'}</h2>
+    <div class="grid g2" style="gap:18px">
+      <div class="form"><h3 class="h3">Datos personales</h3>
+        <div class="row">${inp('name', 'Nombre y apellido')}${inp('specialty', 'Especialidad (opcional)', 'text', 'placeholder="Ej.: Head spa y masajes"')}</div>
+        <div class="row">${inp('phone', 'Celular', 'tel')}${inp('dni', 'DNI')}${inp('birthday', 'Cumpleaños', 'date')}</div>
+        <div class="row">${inp('cuit', 'CUIT / CUIL')}${inp('alias', 'Alias o CBU para pagarle')}</div>
+        ${inp('address', 'Dirección')}
+        <label class="fl"><span>Notas internas</span><textarea id="pf_notes" rows="2">${esc(v.notes || '')}</textarea></label>
+        <h3 class="h3">Acceso al panel</h3>
+        <p class="small muted">Con usuario, entra en /admin y ve solo sus turnos, los servicios que hace y sus comisiones. Puede cancelar un turno suyo y todo queda registrado.</p>
+        <div class="row">${inp('email', 'Email (usuario)', 'email', 'autocomplete="off"')}<label class="fl"><span>${v.has_access ? 'Nueva contraseña (opcional)' : 'Contraseña (10+ caracteres)'}</span><input id="pf_password" type="password" autocomplete="new-password" placeholder="${v.has_access ? 'Dejala vacía para no cambiarla' : 'Vacía = sin acceso por ahora'}"></label></div>
+        ${v.has_access ? '<label class="check"><input type="checkbox" id="pf_noaccess"> Quitarle el acceso al panel</label>' : ''}
+        ${p ? `<label class="check"><input type="checkbox" id="pf_active" ${v.active ? 'checked' : ''}> Activa (si la das de baja no se le asignan turnos nuevos ni puede entrar)</label>` : ''}
+      </div>
+      <div class="form"><h3 class="h3">Servicios que hace</h3>
+        ${Object.entries(byCat).map(([c, list]) => `<div class="fl"><span>${esc(cats[c] || c)}</span><div class="chips">${list.map((s) => `<label><input type="checkbox" data-svc="${s.id}" ${v.services.includes(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>`).join('')}</div></div>`).join('')}
+        <p class="small muted">Un servicio con profesionales asignadas solo se puede reservar cuando alguna de ellas está libre, y el turno queda a nombre de quien lo atiende.</p>
+        <h3 class="h3">Cómo se le paga</h3>
+        <div class="seg" id="pf_type">${Object.entries(meta.pay_types).map(([k, l]) => `<button type="button" data-ptype="${k}" aria-pressed="${v.pay.type === k}">${esc(l)}</button>`).join('')}</div>
+        <div class="row"><label class="fl"><span>Comisión por servicio realizado (%)</span><input id="pf_percent" type="number" min="0" max="100" step="0.5" value="${v.pay.percent}"></label>
+          <label class="fl" id="pf_baseWrap" ${v.pay.type === 'basico_comision' ? '' : 'hidden'}><span>Básico mensual ($)</span><input id="pf_base" type="number" min="0" step="1000" value="${v.pay.base || ''}"></label></div>
+        <p class="small muted" id="pf_example"></p>
+      </div>
+    </div>
+    <p class="err" id="pfErr"></p>
+    <div class="actions">${p && !p.has_bookings ? '' : ''}<button class="btn primary" id="pfSave">${p ? 'Guardar cambios' : 'Crear profesional'}</button><button class="btn" id="pfCancel">Cancelar</button></div></div>`;
+  let type = v.pay.type;
+  const example = () => {
+    const pct = Number($('#pf_percent').value) || 0, base = Number($('#pf_base').value) || 0;
+    const s = meta.services.find((x) => x.price && $$('[data-svc]').some((c) => c.checked && Number(c.dataset.svc) === x.id)) || meta.services.find((x) => x.price);
+    $('#pf_example').textContent = s ? `Ejemplo: por un ${s.name} de ${fmt(s.price)} cobra ${fmt(Math.round(s.price * pct / 100))}${type === 'basico_comision' ? `, más el básico de ${fmt(base)} por mes` : ''}.` : '';
+  };
+  $$('[data-ptype]').forEach((b) => (b.onclick = () => { type = b.dataset.ptype; $$('[data-ptype]').forEach((x) => x.setAttribute('aria-pressed', x === b)); $('#pf_baseWrap').hidden = type !== 'basico_comision'; example(); }));
+  ['pf_percent', 'pf_base'].forEach((id) => ($('#' + id).oninput = example));
+  $$('[data-svc]').forEach((c) => (c.onchange = example));
+  example();
+  $('#pfCancel').onclick = () => { if (p) viewPro(p.id); else box.innerHTML = ''; };
+  $('#pfSave').onclick = async (e) => {
+    $('#pfErr').textContent = '';
+    const body = { name: $('#pf_name').value, specialty: $('#pf_specialty').value, phone: $('#pf_phone').value, dni: $('#pf_dni').value, birthday: $('#pf_birthday').value, cuit: $('#pf_cuit').value, alias: $('#pf_alias').value, address: $('#pf_address').value, notes: $('#pf_notes').value,
+      email: $('#pf_email').value, services: $$('[data-svc]').filter((c) => c.checked).map((c) => Number(c.dataset.svc)), pay: { type, percent: $('#pf_percent').value, base: $('#pf_base').value } };
+    if ($('#pf_password').value) body.password = $('#pf_password').value;
+    if ($('#pf_noaccess')?.checked) body.remove_access = true;
+    if ($('#pf_active')) body.active = $('#pf_active').checked;
+    e.target.disabled = true;
+    try {
+      const r = p ? await api('/pros/' + p.id, { method: 'PATCH', body }) : await api('/pros', { method: 'POST', body });
+      PROS_CACHE = null; toast(p ? 'Cambios guardados' : 'Profesional creada'); navTo('profesional/' + r.pro.id); if (p) viewPro(p.id);
+    } catch (err) { $('#pfErr').textContent = err.message; e.target.disabled = false; }
+  };
+  $('#pfCard').scrollIntoView({ block: 'start' });
+}
+async function viewPro(id) {
+  prosMonth = prosMonth || monthKey();
+  const d = await api(`/pros/${id}?month=${prosMonth}`);
+  const p = d.pro, r = d.report;
+  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#profesionales">← Profesionales</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Profesional')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}</div></div>
+      <div class="actions"><button class="btn" id="pEdit">Editar</button><a class="btn" href="#turnos" id="pTurnos">Ver sus turnos</a></div></div>
+    <div id="pEd"></div>
+    <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(r.month, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(r.month, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(r.month)))}</span></div>
+    ${commissionCards(r)}
+    <div class="grid g2" style="margin-top:14px">
+      <div class="card">${commissionTable(r, true)}</div>
+      <div class="grid" style="align-content:start">
+        <div class="card"><h2>Datos</h2><dl class="kv"><dt>Celular</dt><dd>${esc(p.phone || '—')}</dd><dt>Email</dt><dd>${esc(p.email || '—')}</dd><dt>DNI</dt><dd>${esc(p.dni || '—')}</dd><dt>CUIT / CUIL</dt><dd>${esc(p.cuit || '—')}</dd><dt>Cumpleaños</dt><dd>${p.birthday ? esc(p.birthday.split('-').reverse().join('/')) : '—'}</dd><dt>Dirección</dt><dd>${esc(p.address || '—')}</dd><dt>Para pagarle</dt><dd>${esc(p.alias || '—')}</dd><dt>Servicios</dt><dd>${esc(p.service_names.join(', ') || '—')}</dd>${p.notes ? `<dt>Notas</dt><dd>${esc(p.notes)}</dd>` : ''}<dt>Alta</dt><dd>${at(p.created_at)}</dd></dl></div>
+        <div class="card"><h2>Lo que hizo en el panel</h2>${auditList(d.audit)}</div>
+      </div>
+    </div>`;
+  $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPro(id); }));
+  $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+  $('#pEdit').onclick = () => proForm($('#pEd'), p, d);
+}
+function commissionCards(r) {
+  return `<div class="grid g4">
+    <div class="card kpi accent"><div class="l">A cobrar por lo realizado</div><div class="v">${fmt(r.total)}</div><div class="l">${r.base ? `básico ${fmt(r.base)} + comisiones ${fmt(r.earned)}` : `${r.done} servicio${r.done === 1 ? '' : 's'} realizado${r.done === 1 ? '' : 's'}`}</div></div>
+    <div class="card kpi"><div class="l">Comisiones ganadas</div><div class="v">${fmt(r.earned)}</div><div class="l">sobre ${fmt(r.sales)} en servicios</div></div>
+    <div class="card kpi"><div class="l">Por venir este mes</div><div class="v">${fmt(r.upcoming)}</div><div class="l">${r.next} turno${r.next === 1 ? '' : 's'} confirmado${r.next === 1 ? '' : 's'}</div></div>
+    <div class="card kpi"><div class="l">Si se hacen todos</div><div class="v">${fmt(r.projected)}</div><div class="l">${esc(payText(r.pay))}</div></div>
+  </div>`;
+}
+function commissionTable(r, links) {
+  return `<h2>Turnos de ${esc(monthLabel(r.month))}</h2>${r.rows.length ? `<div class="tablewrap"><table><tr><th>Día</th><th>Servicio</th><th>Clienta</th><th>Estado</th><th class="r">Precio</th><th class="r">Comisión</th></tr>
+    ${r.rows.map((x) => `<tr ${links ? `class="click" data-href="turno/${x.id}"` : ''}><td class="n">${shortWhen(x.start)}</td><td>${esc(x.service_name)}</td><td>${esc(x.client)}</td><td>${pill(x.status)}</td><td class="r n">${x.price ? fmt(x.price) : '—'}</td><td class="r n">${x.counts === 'none' ? '<span class="muted">—</span>' : `${fmt(x.commission)}<div class="small muted">${x.percent}%${x.counts === 'upcoming' ? ' · por venir' : ''}</div>`}</td></tr>`).join('')}
+    <tr><td colspan="5"><b>Total realizado</b></td><td class="r n"><b>${fmt(r.earned)}</b></td></tr>${r.base ? `<tr><td colspan="5">Básico del mes</td><td class="r n">${fmt(r.base)}</td></tr><tr><td colspan="5"><b>A cobrar</b></td><td class="r n"><b>${fmt(r.total)}</b></td></tr>` : ''}</table></div>
+    <p class="small muted" style="margin-top:8px">La comisión se calcula sobre el precio del servicio. Los cancelados y los que no vinieron no suman. Al realizarse, el turno guarda el porcentaje de ese momento.</p>` : '<p class="muted">No tiene turnos este mes.</p>'}`;
+}
+
+// ── Historial de cambios ─────────────────────────────────
+async function viewAudit() {
+  const st = { user: '', q: '' };
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Historial de cambios</h1><div class="sub">Todo lo que hace cada usuario del panel: turnos cargados, cancelados o movidos, transferencias confirmadas, precios, profesionales y configuración.</div></div></div>
+    <div class="toolbar"><select id="auU"><option value="">Todos los usuarios</option></select><input id="auQ" placeholder="Buscar (ej.: canceló, T-1042, precio)"></div><div id="auList"><p class="muted">Cargando…</p></div>`;
+  const load = async () => {
+    const r = await api('/audit?' + new URLSearchParams(st));
+    if ($('#auU').options.length === 1) { $('#auU').innerHTML += r.users.map((u) => `<option value="${u.id}">${esc(u.name)} · ${esc(u.role_label)}</option>`).join(''); $('#auU').value = st.user; }
+    $('#auList').innerHTML = r.audit.length ? `<div class="card tablewrap"><table><tr><th>Cuándo</th><th>Quién</th><th>Qué hizo</th></tr>${r.audit.map((a) => `<tr ${a.booking_id ? `class="click" data-href="turno/${a.booking_id}"` : a.pro_id ? `class="click" data-href="profesional/${a.pro_id}"` : ''}><td class="n">${at(a.at)}</td><td><b>${esc(a.user)}</b><div class="small muted">${esc(a.role_label)}</div></td><td>${esc(a.action)}</td></tr>`).join('')}</table></div>` : '<div class="empty card">No hay cambios con ese filtro.</div>';
+    $$('#auList tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+  };
+  $('#auU').onchange = (e) => { st.user = e.target.value; load(); };
+  let t; $('#auQ').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { st.q = e.target.value; load(); }, 250); };
+  load();
+}
+
+// ── Vistas de la profesional ─────────────────────────────
+async function viewProHome() {
+  const d = await api('/dashboard');
+  const m = d.month;
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Hola, ${esc((ME.name || '').split(' ')[0])}</h1><div class="sub">${esc(capF(longDay(d.today)))} · ${esc(payText(m.pay))}</div></div><div class="actions"><a class="btn primary" href="#agenda">Ver mi agenda</a></div></div>
+    ${commissionCards({ ...m, month: d.today.slice(0, 7) })}
+    <div class="card" style="margin-top:14px"><h2>Tus próximos turnos</h2>${d.next.length ? `<div class="tablewrap"><table><tr><th>Día y hora</th><th>Servicio</th><th>Clienta</th><th>Estado</th><th class="r">Tu comisión</th></tr>${d.next.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${shortWhen(b.start)}</td><td>${esc(b.service_name)}</td><td>${esc(b.name)}</td><td>${pill(b.status)}</td><td class="r n">${fmt(b.commission)}</td></tr>`).join('')}</table></div>` : '<p class="muted">No tenés turnos por delante.</p>'}</div>`;
+  $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+}
+async function viewProServices() {
+  const r = await api('/services');
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Mis servicios</h1><div class="sub">Los servicios que atendés y lo que cobrás por cada uno · ${esc(payText(r.pay))}</div></div></div>
+    ${r.services.length ? `<div class="card tablewrap"><table><tr><th>Servicio</th><th>Duración</th><th class="r">Precio</th><th class="r">Tu comisión</th></tr>${r.services.map((s) => `<tr><td>${esc(s.name)}<div class="small muted">${esc(r.categories.find((c) => c.key === s.category)?.name || '')}</div></td><td class="n">${s.duration ? `${s.duration} min` : '—'}</td><td class="r n">${s.price ? fmt(s.price) : 'Consultar'}</td><td class="r n"><b>${s.price ? fmt(s.commission) : '—'}</b></td></tr>`).join('')}</table></div>` : '<div class="empty card">Todavía no tenés servicios asignados. Hablá con administración.</div>'}`;
+}
+let comMonth = '';
+async function viewCommissions() {
+  comMonth = comMonth || monthKey();
+  const r = await api('/commissions?month=' + comMonth);
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Mis comisiones</h1><div class="sub">${esc(payText(r.pay))}</div></div></div>
+    <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(r.month, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(r.month, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(r.month)))}</span></div>
+    ${commissionCards(r)}<div class="card" style="margin-top:14px">${commissionTable(r, true)}</div>`;
+  $$('[data-m]').forEach((b) => (b.onclick = () => { comMonth = b.dataset.m; viewCommissions(); }));
+  $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
+}
+async function viewProActivity() {
+  const r = await api('/audit');
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Mi actividad</h1><div class="sub">Lo que hiciste desde tu usuario. La administración ve este mismo registro.</div></div></div><div class="card">${auditList(r.audit)}</div>`;
 }
 
 // ── Arranque ─────────────────────────────────────────────
@@ -596,7 +838,8 @@ async function boot() {
     $('#login').hidden = true; $('#app').hidden = false;
     $('#whoami').innerHTML = `${esc(ME.name || ME.email)}<span>${esc(ME.role_label)}</span>`;
     SERVICES = null;
-    api('/dashboard').then((d) => { attention = d.attention.length; renderNav(currentHash().split('/')[0] || 'agenda'); }).catch(() => {});
+    PROS_CACHE = null;
+    if (!isPro()) api('/dashboard').then((d) => { attention = d.attention.length + (d.transfers?.length || 0); renderNav(currentHash().split('/')[0] || 'agenda'); }).catch(() => {});
     route();
   } catch { showLogin(); }
 }

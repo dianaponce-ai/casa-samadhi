@@ -28,19 +28,29 @@ ${cta ? `<tr><td style="padding:18px 32px 6px"><a href="${esc(ctaUrl)}" style="d
 }
 const rows = (list) => `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #d8cebe;font-size:14px">${list.filter(Boolean).map(([k, v]) => `<tr><td style="padding:10px 0;border-bottom:1px solid #d8cebe;color:#6d675d">${esc(k)}</td><td style="padding:10px 0;border-bottom:1px solid #d8cebe;text-align:right">${v}</td></tr>`).join('')}</table>`;
 const rest = (b) => Math.max(0, b.price - (b.deposit_paid || 0) - (b.gift_applied || 0));
+const PAY = { mp: 'Mercado Pago', transfer: 'Transferencia', local: 'En la casa', gift: 'Gift card' };
+const hhmm = (s) => String(s || '').slice(11);
 function bookingRows(b, { contact = false } = {}) {
+  const many = b.items?.length > 1;
   return rows([
-    ['Servicio', esc(b.service_name)],
+    ...(many ? b.items.map((it) => [`${hhmm(it.start)} h · ${it.service_name}`, `${it.pro_name ? `con ${esc(it.pro_name)} · ` : ''}${money(it.price)}`]) : [['Servicio', esc(b.service_name)]]),
     ['Día y hora', esc(longDate(b.start))],
-    b.duration ? ['Duración', `${b.duration} min`] : null,
+    !many && b.pro_name ? ['Te atiende', esc(b.pro_name)] : null,
+    b.duration ? ['Duración', `${b.duration} min${many ? ' en total' : ''}`] : null,
     contact ? ['Clienta', `${esc(b.name)}<br>${esc(b.phone)}${b.email ? `<br>${esc(b.email)}` : ''}`] : null,
     b.price ? ['Precio', money(b.price)] : null,
     b.gift_applied ? ['Gift card', `− ${money(b.gift_applied)}`] : null,
-    b.deposit_paid ? ['Seña pagada', money(b.deposit_paid)] : null,
+    b.deposit_paid ? ['Seña pagada', `${money(b.deposit_paid)}${PAY[b.pay_method] ? ` · ${PAY[b.pay_method]}` : ''}`] : null,
     b.price ? ['Resta abonar en la casa', `<b>${money(rest(b))}</b>`] : null,
     ['Código de reserva', `<b>${esc(b.code)}</b>`],
     contact && b.notes ? ['Notas', `<i>${esc(b.notes)}</i>`] : null,
   ]);
+}
+function transferBox(b, pay = {}) {
+  const line = (k, v) => (v ? `<tr><td style="padding:6px 0;color:#6d675d">${k}</td><td style="padding:6px 0;text-align:right"><b>${esc(v)}</b></td></tr>` : '');
+  return `<div style="background:#efe8db;border-left:3px solid #b08d57;padding:18px 20px;margin:14px 0">
+<div style="font-size:10px;letter-spacing:.4em;color:#6d675d">DATOS PARA TRANSFERIR</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-size:14px;margin-top:8px">${line('Monto', money(b.deposit_due))}${line('Alias', pay.alias)}${line('CBU / CVU', pay.cbu)}${line('Titular', pay.holder)}${line('Banco', pay.bank)}${line('CUIT', pay.cuit)}${line('Referencia', b.code)}</table></div>`;
 }
 function giftBox(g) {
   return `<div style="background:#4c5a3d;color:#f4efe6;padding:26px;text-align:center;margin:6px 0">
@@ -83,6 +93,9 @@ export const TEMPLATES = {
   booking_expired: { group: 'turnos', label: 'Se liberó el horario', to: 'Clienta', when: 'Cuando vence el tiempo para pagar la seña y el horario se libera.',
     render: (c) => ({ subject: 'Se liberó tu horario en Casa Samadhi', title: 'No llegamos a confirmar tu turno', intro: `Hola ${esc(first(c.booking.name))}, como no se acreditó la seña, liberamos el horario del ${esc(longDate(c.booking.start))}. Si querés, podés reservar de nuevo.`,
       body: '', cta: 'Reservar de nuevo', ctaUrl: c.home + '#reservar', foot: 'Si pagaste y te llegó este email, escribinos por WhatsApp y lo resolvemos.' }) },
+  booking_transfer: { group: 'turnos', label: 'Datos para transferir', to: 'Clienta', when: 'Cuando reserva y elige pagar la seña por transferencia. El turno queda guardado hasta que llega.',
+    render: (c) => ({ subject: `Te guardamos el turno · transferí la seña · ${c.booking.code}`, title: 'Falta la transferencia', intro: `Hola ${esc(first(c.booking.name))}, te guardamos el turno. Para confirmarlo transferí la seña de <b>${money(c.booking.deposit_due)}</b> y mandanos el comprobante por WhatsApp. Apenas la veamos te llega la confirmación.`,
+      body: transferBox(c.booking, c.pay) + bookingRows(c.booking), cta: 'Ya transferí / ver mi turno', ctaUrl: c.link, foot: `Guardamos el turno hasta el ${esc(c.holdUntil || '')}. Si la transferencia no llega para entonces, el horario se libera.` }) },
   booking_rescheduled: { group: 'turnos', label: 'Turno reprogramado', to: 'Clienta', when: 'Cuando el equipo cambia el día u horario desde el panel (si se marca "Avisarle por email").',
     render: (c) => ({ subject: `Cambiamos tu turno · ${longDate(c.booking.start)}`, title: 'Tu turno tiene nuevo horario', intro: `Hola ${esc(first(c.booking.name))}, tu turno quedó para el <b>${esc(longDate(c.booking.start))}</b>.`,
       body: bookingRows(c.booking), cta: 'Ver mi turno', ctaUrl: c.link }) },
@@ -114,8 +127,18 @@ export const TEMPLATES = {
 
   booking_staff: { group: 'casa', label: 'Turno nuevo', to: 'Equipo', when: 'Cada vez que se confirma un turno reservado en la web.',
     render: (c) => ({ subject: `Turno nuevo: ${c.booking.service_name} · ${longDate(c.booking.start)}`, title: 'Entró un turno', intro: '', body: bookingRows(c.booking, { contact: true }), cta: 'Abrir el panel', ctaUrl: c.home + 'admin/' }) },
-  staff_cancelled: { group: 'casa', label: 'Cancelación de una clienta', to: 'Equipo', when: 'Cuando una clienta cancela su turno desde el link del email.',
-    render: (c) => ({ subject: `Canceló: ${c.booking.name} · ${longDate(c.booking.start)}`, title: 'Una clienta canceló', intro: c.booking.deposit_paid ? `Tenía una seña paga de <b>${money(c.booking.deposit_paid)}</b>: hay que devolverla o pasarla a otra fecha.` : 'El horario quedó libre.',
+  staff_transfer: { group: 'casa', label: 'Transferencia para verificar', to: 'Equipo', when: 'Cuando una clienta reserva pagando por transferencia, y otra vez cuando avisa que ya transfirió.',
+    render: (c) => ({ subject: `${c.notified ? 'Avisó que transfirió' : 'Reserva por transferencia'}: ${c.booking.name} · ${money(c.booking.deposit_due)} · ${c.booking.code}`, title: c.notified ? 'Verificá la transferencia' : 'Reserva esperando transferencia',
+      intro: `${esc(c.booking.name)} ${c.notified ? 'avisó que ya transfirió' : 'reservó y va a pagar la seña por transferencia'}: <b>${money(c.booking.deposit_due)}</b>. ${c.notified ? 'Cuando la veas en la cuenta, confirmala desde el panel y le llega la confirmación.' : 'El turno queda guardado; confirmalo en el panel cuando llegue la plata.'}${c.note ? `<br><i>“${esc(c.note)}”</i>` : ''}`,
+      body: bookingRows(c.booking, { contact: true }), cta: 'Abrir el panel', ctaUrl: c.home + 'admin/' }) },
+  pro_booking: { group: 'casa', label: 'Turno nuevo para la profesional', to: 'Profesional', when: 'Cuando se confirma un turno que va a atender (con lo que cobra de comisión).',
+    render: (c) => ({ subject: `Turno nuevo: ${c.booking.service_name} · ${longDate(c.booking.start)}`, title: 'Tenés un turno nuevo', intro: `Hola ${esc(first(c.pro?.name))}, se confirmó un turno para vos.${c.commission ? ` Tu comisión: <b>${money(c.commission)}</b>.` : ''}`,
+      body: rows([['Servicio', esc(c.booking.service_name)], ['Día y hora', esc(longDate(c.booking.start))], ['Duración', `${c.booking.duration} min`], ['Clienta', esc(c.booking.name)], c.booking.notes ? ['Notas', `<i>${esc(c.booking.notes)}</i>`] : null]), cta: 'Ver mis turnos', ctaUrl: c.home + 'admin/' }) },
+  pro_cancelled: { group: 'casa', label: 'Turno cancelado para la profesional', to: 'Profesional', when: 'Cuando se cancela un turno que tenía asignado.',
+    render: (c) => ({ subject: `Se canceló: ${c.booking.service_name} · ${longDate(c.booking.start)}`, title: 'Se canceló un turno tuyo', intro: `Hola ${esc(first(c.pro?.name))}, se canceló el turno de ${esc(c.booking.name)}. Ese horario quedó libre.`,
+      body: rows([['Servicio', esc(c.booking.service_name)], ['Día y hora', esc(longDate(c.booking.start))]]), cta: 'Ver mis turnos', ctaUrl: c.home + 'admin/' }) },
+  staff_cancelled: { group: 'casa', label: 'Cancelación', to: 'Equipo', when: 'Cuando una clienta cancela su turno desde el link del email o una profesional lo cancela desde su usuario.',
+    render: (c) => ({ subject: `Canceló: ${c.booking.name} · ${longDate(c.booking.start)}`, title: c.by ? `${c.by} canceló un turno` : 'Una clienta canceló', intro: (c.reason ? `Motivo: <i>${esc(c.reason)}</i><br>` : '') + (c.booking.deposit_paid ? `Tenía una seña paga de <b>${money(c.booking.deposit_paid)}</b>: hay que devolverla o pasarla a otra fecha.` : 'El horario quedó libre.'),
       body: bookingRows(c.booking, { contact: true }), cta: 'Abrir el panel', ctaUrl: c.home + 'admin/' }) },
   staff_attention: { group: 'casa', label: 'Turno para revisar', to: 'Equipo', when: 'Si una seña se acredita tarde y el horario ya estaba ocupado: hay que reprogramar o devolver.',
     render: (c) => ({ subject: `Revisar: seña fuera de término · ${c.booking.code}`, title: 'Hay un turno para revisar', intro: `${esc(c.booking.name)} pagó la seña después de que venció la reserva y el horario ya estaba tomado. Coordiná otro horario o la devolución.`,
@@ -146,9 +169,10 @@ export function renderEmail(template, ctx, custom = {}) {
 export function sampleContext(template, site, now = Date.now()) {
   const d = new Date(now - 3 * 3600e3 + 2 * 864e5);
   const day = d.toISOString().slice(0, 10);
-  const booking = { code: 'T-1042', token: 'ejemplo', service_name: 'Ritual esencial', start: `${day} 11:00`, duration: 60, price: 55000, deposit: 16500, deposit_due: 16500, deposit_paid: template === 'booking_pending' ? 0 : 16500, gift_applied: 0, name: 'Lucía Fernández', email: 'lucia@ejemplo.com', phone: '221 555-1234', notes: 'Primera vez' };
+  const unpaid = ['booking_pending', 'booking_transfer', 'staff_transfer'].includes(template);
+  const booking = { code: 'T-1042', token: 'ejemplo', service_name: 'Ritual esencial', start: `${day} 11:00`, duration: 60, price: 55000, deposit: 16500, deposit_due: 16500, deposit_paid: unpaid ? 0 : 16500, gift_applied: 0, name: 'Lucía Fernández', email: 'lucia@ejemplo.com', phone: '221 555-1234', notes: 'Primera vez', pro_name: 'Ana', pay_method: template === 'booking_confirmed' ? 'transfer' : 'mp' };
   const gift = { code: 'CS-K7QM-2XPA', token: 'ejemplo', amount: 55000, balance: template === 'giftcard_expiring' ? 25000 : 55000, service_name: 'Ritual esencial', buyer_name: 'Martina Herrera', buyer_email: 'martina@ejemplo.com', to_name: 'Sofía', to_email: 'sofia@ejemplo.com', message: '¡Feliz cumple! Regalate un momento para vos.', send_to_recipient: true, expires_at: new Date(now + (template === 'giftcard_expiring' ? 25 : 180) * 864e5).toISOString() };
   const w = { code: 'ARR-7KQ2MX', name: 'Lucía Fernández', email: 'lucia@ejemplo.com', ref: 'T-1042', reason: 'No voy a poder ir.' };
   const list = [{ ...booking }, { ...booking, code: 'T-1043', start: `${day} 15:30`, service_name: 'Esmaltado semipermanente', duration: 60, price: 16000, deposit_paid: 4800, name: 'Carolina Gómez', phone: '221 555-9876' }];
-  return { site, booking, gift, w, list, day, person: { name: 'Lucía Fernández' }, resetLink: (site.publicUrl || '') + '/#clave/ejemplo', link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
+  return { site, booking, gift, w, list, day, person: { name: 'Lucía Fernández' }, pro: { name: 'Ana Gómez' }, commission: 22000, pay: { alias: 'casa.samadhi.spa', cbu: '', holder: 'Casa Samadhi', bank: 'Banco de ejemplo', cuit: '' }, notified: template === 'staff_transfer', resetLink: (site.publicUrl || '') + '/#clave/ejemplo', link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
 }

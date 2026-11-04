@@ -1,7 +1,7 @@
 // Servidor de prueba para la vista previa: usa la misma lógica que el servidor real (spa-core),
 // pero guarda todo en este navegador. Mercado Pago y los emails quedan simulados.
 const C = window.__CORE;
-const KEY = 'casa-samadhi-demo-v3';
+const KEY = 'casa-samadhi-demo-v4';
 const DEMO_USERS = window.__CASA_DEMO_USERS;
 const base = location.href.split('#')[0].split('?')[0].replace(/\/$/, '');
 const env = {
@@ -18,11 +18,20 @@ const env = {
 function seedDemo() {
   const st = C.seedState();
   st.customers = [];
+  const slugIds = (list) => list.map((x) => st.services.find((s) => s.slug === x)?.id).filter(Boolean);
   for (const u of DEMO_USERS) {
-    if (u.kind === 'staff') st.staff.push({ id: ++st.ids.staff, email: u.email, name: u.name, role: u.role, password_hash: 'demo$' + u.password, created_at: new Date().toISOString() });
+    if (u.kind === 'staff') st.staff.push({ id: ++st.ids.staff, email: u.email, name: u.name, role: u.role, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 120 * 864e5).toISOString(),
+      ...(u.role === 'pro' ? { active: true, specialty: u.specialty, phone: '221 555-4010', services: slugIds(u.services), pay: u.pay } : {}) });
     else st.customers.push({ id: (st.ids.customer = (st.ids.customer || 0) + 1), email: u.email, name: u.name, phone: u.phone, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 40 * 864e5).toISOString() });
   }
   st.settings.booking.staffEmails = 'turnos@casasamadhi.demo';
+  // Profesionales de ejemplo (además de la del usuario de prueba) y datos para transferir.
+  const ago = new Date(Date.now() - 200 * 864e5).toISOString();
+  st.staff.push({ id: ++st.ids.staff, email: '', name: 'Sol Ruiz', role: 'pro', password_hash: null, created_at: ago, active: true, specialty: 'Manicuría', phone: '221 555-4020',
+    services: st.services.filter((s) => s.category === 'manicuria').map((s) => s.id), pay: { type: 'basico_comision', percent: 25, base: 350000 } });
+  st.staff.push({ id: ++st.ids.staff, email: '', name: 'Mica Paz', role: 'pro', password_hash: null, created_at: ago, active: true, specialty: 'Masajes', phone: '221 555-4030',
+    services: slugIds(['ritual-profundo', 'masoterapia-relajante']), pay: { type: 'comision', percent: 45, base: 0 } });
+  st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'ALIAS.DE.PRUEBA', holder: 'Casa Samadhi (datos de prueba)', bank: 'Banco de ejemplo' };
   // Turnos de ejemplo: los últimos 90 días y las próximas dos semanas.
   let seed = 11; const r = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
   const names = ['Lucía Fernández', 'Carolina Gómez', 'Florencia Díaz', 'Julieta Romero', 'Agustina Pereyra', 'Sofía Martínez', 'Valeria Sosa', 'Camila Benítez', 'Mariana López', 'Paula Acosta', 'Natalia Ruiz', 'Victoria Medina'];
@@ -80,6 +89,34 @@ function seedDemo() {
   const gc = new Date(Date.now() - 20 * 864e5).toISOString();
   st.giftcards.push({ id: ++st.ids.gift, code: 'CS-LUCI-A26X', token: 'clgift' + Math.random().toString(36).slice(2), amount: 80000, balance: 80000, service_id: null, service_name: 'Ritual profundo con pindas', buyer_name: 'Carolina Gómez', buyer_email: 'carolina.gomez@ejemplo.com', to_name: cl.name, to_email: cl.email, message: '¡Feliz cumple, amiga! Te lo merecés.', send_to_recipient: true,
     status: 'active', source: 'web', created_at: gc, paid_at: gc, expires_at: new Date(Date.now() + 160 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-2', history: [{ at: gc, amount: 80000, note: 'Gift card de ejemplo' }] });
+  // Cada turno de ejemplo queda a nombre de una profesional que hace ese servicio (y está libre).
+  const pros = st.staff.filter((u) => u.role === 'pro');
+  for (const b of [...st.bookings].sort((a, c) => a.start.localeCompare(c.start))) {
+    const can = pros.filter((p) => p.services.includes(b.service_id));
+    const free = can.filter((p) => !st.bookings.some((x) => x !== b && x.pro_id === p.id && x.start.slice(0, 10) === b.start.slice(0, 10) && Math.abs(Date.parse(x.start.replace(' ', 'T')) - Date.parse(b.start.replace(' ', 'T'))) < Math.max(x.duration, b.duration) * 60e3));
+    const p = free[Math.floor(r() * free.length)] || can[0];
+    if (p) { b.pro_id = p.id; b.pro_name = p.name; if (b.status === 'completed') b.commission_percent = p.pay.percent; }
+    b.pay_method = b.deposit_paid ? (r() < 0.8 ? 'mp' : 'transfer') : 'none';
+  }
+  // Una reserva esperando transferencia, para ver cómo se confirma.
+  const t = C.addDays(today, 2) ;
+  const s1 = st.services.find((s) => s.slug === 'ritual-esencial');
+  const tt = C.slotsFor(st, env, s1, t, { staff: true }).find((x) => x >= '15:00') || '16:00';
+  const p1 = pros.find((p) => p.services.includes(s1.id));
+  const cr = new Date(Date.now() - 2 * 3600e3).toISOString();
+  st.bookings.push({ id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: 'tr' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2), group: null, service_id: s1.id, service_name: s1.name, resource: s1.resource,
+    pro_id: p1?.id || null, pro_name: p1?.name || '', start: `${t} ${tt}`, duration: s1.duration, price: s1.price, deposit: 16500, deposit_due: 16500, deposit_paid: 0, gift_id: null, gift_code: '', gift_applied: 0,
+    name: 'Martina Herrera', email: 'martina.herrera@ejemplo.com', phone: '221 555-6611', notes: '', status: 'pending_transfer', source: 'web', created_at: cr, pay_method: 'transfer', transfer_notified: new Date(Date.now() - 3600e3).toISOString(),
+    hold_until: new Date(Date.now() + 10 * 3600e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: cr, text: 'Reservado: seña de $ 16.500 por transferencia, a verificar' }, { at: new Date(Date.now() - 3600e3).toISOString(), text: 'La clienta avisó que ya transfirió' }] });
+  // Historial de cambios de ejemplo
+  const adm = st.staff.find((u) => u.role === 'admin'), rec = st.staff.find((u) => u.role === 'staff'), ana = pros[0];
+  const log = (u, h, action) => st.audit.push({ id: (st.ids.audit = (st.ids.audit || 0) + 1), at: new Date(Date.now() - h * 3600e3).toISOString(), user_id: u.id, user: u.name, role: u.role, action });
+  log(adm, 240, 'Creó la profesional Sol Ruiz · Básico + comisión 25% + básico $ 350.000');
+  log(adm, 239, 'Creó la profesional Mica Paz · Solo comisión 45%');
+  log(adm, 200, 'Cambió la configuración: medios de pago');
+  log(rec, 50, 'Cargó el turno de un llamado por WhatsApp');
+  log(ana, 30, 'Ingresó al panel');
+  st.audit.sort((a, c) => a.at.localeCompare(c.at));
   return st;
 }
 let st;
