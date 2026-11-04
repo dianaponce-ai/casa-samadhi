@@ -5,7 +5,7 @@ Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/sam
 
 ## Qué hace
 - **Turnos online con seña**: la clienta elige servicio, día y horario libre, paga la seña con Mercado Pago y recibe la confirmación por email. Puede cancelar desde el link del email hasta 24 h antes.
-- **Por WhatsApp**: las terapias sin precio fijo (Reiki, Barras de Access, armonización, tarot) se consultan con un botón que abre WhatsApp con el mensaje escrito.
+- **Por WhatsApp**: las terapias sin precio fijo (tarot y oráculo) se consultan con un botón que abre WhatsApp con el mensaje escrito.
 - **Gift cards**: se compran online (un ritual o un monto), llegan por email con un código y se usan al reservar. También se pueden emitir en la casa desde el panel.
 - **Mi cuenta**: las clientas se registran, ven sus próximos turnos, el historial y sus gift cards, cancelan y reservan de nuevo con los datos ya cargados. La web las recuerda: saluda por el nombre, muestra la última visita y el tratamiento favorito, ofrece "Repetir" lo último y completa la reserva con sus datos y lo que contaron la vez anterior (alergias, preferencias).
 - **Clientas (CRM)**: ficha de cada clienta con visitas, gasto, ticket promedio, cada cuántos días vuelve, última visita y próximo turno, tratamientos que más hace, gift cards e historial completo. El equipo carga cumpleaños, etiquetas (VIP, Frecuente, Sensible…), preferencias y notas internas. Filtros por frecuentes, nuevas, sin venir hace 60+ días y cumpleaños del mes, y WhatsApp directo desde la ficha.

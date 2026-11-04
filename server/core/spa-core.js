@@ -30,9 +30,9 @@ const MIGRATIONS = {
     if (digits(site.whatsapp) === digits(SITE.ritualsWhatsapp)) site.whatsapp = SITE.whatsapp;
     if (!site.eventsWhatsapp) site.eventsWhatsapp = SITE.eventsWhatsapp;
   },
-  'reiki-foto-2026-11': (st) => {
-    const r = st.services.find((s) => s.slug === 'reiki');
-    if (r && (!r.image || r.image === 'media/deco-cristal.webp')) r.image = SERVICES.find((s) => s.slug === 'reiki').image;
+  'sin-reiki-armonizacion-barras-2026-11': (st) => {
+    const fuera = ['reiki', 'armonizacion', 'barras-de-access'];
+    st.services = st.services.filter((s) => !fuera.includes(s.slug));
   },
 };
 function migrate(st) {

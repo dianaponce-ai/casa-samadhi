@@ -36,14 +36,6 @@ export const SERVICES = [
   { slug: 'retirado-nuevo-servicio', category: 'manicuria', resource: 'manicuria', mode: 'menu', name: 'Retirado + nuevo servicio', tag: 'Se suma al servicio nuevo', duration: 0, price: 1500 },
   { slug: 'retirado-otro-salon', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de otro salón', duration: 30, price: 9000 },
 
-  { slug: 'reiki', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Reiki', tag: 'Energía que sana, equilibra y transforma', duration: 60, price: null, image: 'https://images.unsplash.com/photo-1757066033647-366cc10e0de2?auto=format&fit=crop&w=1200&q=75',
-    short: 'Armoniza cuerpo, mente y espíritu, libera bloqueos, reduce el estrés y eleva tu bienestar integral.' },
-  { slug: 'armonizacion', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Armonización facial y corporal', tag: 'Belleza que refleja tu equilibrio interior', duration: 60, price: null, image: 'media/camilla.webp',
-    short: 'Técnica holística que trabaja los músculos del rostro y del cuerpo: libera tensiones, mejora la circulación y estimula tu energía vital.',
-    includes: ['Relaja y descontractura', 'Tonifica y rejuvenece', 'Realza tu belleza natural', 'Armoniza tu cuerpo y tu energía'] },
-  { slug: 'barras-de-access', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Barras de Access', tag: 'Un reinicio mental', duration: 60, price: null, image: 'media/barras-access.webp',
-    short: 'Toques suaves en 32 puntos de la cabeza para soltar pensamientos y emociones que pesan. Relajación profunda y claridad mental.',
-    includes: ['Reduce el estrés', 'Mejora la calidad del sueño', 'Más energía y creatividad', 'Claridad mental y enfoque'] },
   { slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', tag: 'Lecturas personalizadas', duration: 45, price: null, image: 'media/deco-cristal.webp',
     short: 'Una lectura para hacerle una pregunta al tarot y recibir el mensaje del oráculo.' },
 ];
