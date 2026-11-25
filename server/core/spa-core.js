@@ -6,7 +6,7 @@
 //   env.createPayment({ kind, token, title, amount, email }) → Promise<url>
 //   env.sendEmail({ template, to, subject, html }) → Promise
 //   env.hashPassword(pw) / env.checkPassword(pw, hash)
-import { CATEGORIES, RESOURCES, SERVICES, SITE, HOURS, BOOKING, PAYMENTS, GIFTCARDS, FAQ, TERMS } from './defaults.js';
+import { CATEGORIES, RESOURCES, SERVICES, SITE, HOURS, BOOKING, PAYMENTS, GIFTCARDS, FAQ, TERMS, PROS } from './defaults.js';
 import { renderEmail, TEMPLATES, GROUPS, VARS, sampleContext, longDate } from './emails.js';
 
 export const STATE_VERSION = 1;
@@ -112,7 +112,19 @@ const MIGRATIONS = {
       if (s) s.includes = structuredClone(def.includes);
     }
   },
+  'profesionales-2026-11': (st) => addDefaultPros(st, new Date().toISOString()),
 };
+/** Suma a las profesionales de la casa (Trinidad y Belén) con los servicios de su sección, si todavía no están. */
+function addDefaultPros(st, at) {
+  st.ids.staff = Math.max(st.ids.staff || 0, ...st.staff.map((u) => u.id || 0));
+  for (const p of PROS) {
+    const ids = st.services.filter((s) => p.categories.includes(s.category) && s.mode !== 'menu').map((s) => s.id);
+    const prev = st.staff.find((u) => u.role === 'pro' && u.name.trim().toLowerCase() === p.name.toLowerCase());
+    if (prev) { prev.services = [...new Set([...(prev.services || []), ...ids])]; prev.specialty = prev.specialty || p.specialty; continue; }
+    // Sin email ni contraseña: atiende turnos; el acceso al panel y la comisión se cargan en Panel → Profesionales.
+    st.staff.push({ id: ++st.ids.staff, email: '', name: p.name, role: 'pro', password_hash: null, created_at: at, active: true, specialty: p.specialty, services: ids, pay: { type: 'comision', percent: 0, base: 0 } });
+  }
+}
 function migrate(st) {
   st.meta.migrations = st.meta.migrations || [];
   for (const [k, fn] of Object.entries(MIGRATIONS)) if (!st.meta.migrations.includes(k)) { fn(st); st.meta.migrations.push(k); }
@@ -144,6 +156,7 @@ export function seedState() {
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, audit: 0, bookingNumber: 1000 },
   };
   SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, ...structuredClone(s) }));
+  addDefaultPros(st, new Date(0).toISOString());
   return st;
 }
 

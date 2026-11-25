@@ -9,6 +9,8 @@ function makeEnv(start = Date.UTC(2026, 10, 3, 12, 0)) {
     createPayment: async ({ kind, token }) => `#pago/${kind}/${token}`, sendEmail: async (m) => { sent.push(m); return 'ok'; },
     hashPassword: async (p) => 'x$' + p, checkPassword: async (p, h) => h === 'x$' + p };
 }
+// Estado inicial sin las profesionales de la casa, para los tests que arman su propio equipo.
+const bare = () => { const st = seedState(); st.staff = []; st.ids.staff = 0; return st; };
 const call = (st, env, method, path, body, staff) => handle(st, env, { method, path: path.split('?')[0], query: Object.fromEntries(new URLSearchParams(path.split('?')[1] || '')), body, staff }).then((r) => r.body);
 const who = { name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', accept: true };
 
@@ -60,7 +62,7 @@ test('gift card: se compra, se activa con el pago y paga un turno completo', asy
 });
 
 test('bloqueos y panel', async () => {
-  const st = seedState(), env = makeEnv();
+  const st = bare(), env = makeEnv();
   await assert.rejects(call(st, env, 'GET', '/api/admin/dashboard'), (e) => e.status === 401);
   st.staff.push({ id: 1, email: 'a@a.com', name: 'A', role: 'admin', password_hash: 'x$clave' });
   const staff = st.staff[0];
@@ -72,7 +74,7 @@ test('bloqueos y panel', async () => {
 });
 
 test('emails automáticos: seña pendiente, horario liberado, gracias, agenda diaria y prueba', async () => {
-  const st = seedState(), env = makeEnv();
+  const st = bare(), env = makeEnv();
   st.settings.booking.staffEmails = 'equipo@ejemplo.com';
   const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who });
   env.advance(16 * 60e3); await tick(st, env);
@@ -199,7 +201,7 @@ test('transferencia: queda guardado, la clienta avisa y la administración confi
 });
 
 test('profesionales: se asignan solas, ven solo lo suyo, pueden cancelar y cobran su comisión', async () => {
-  const st = seedState(), env = makeEnv();
+  const st = bare(), env = makeEnv();
   const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
   const adm = (m, p, b) => call(st, env, m, '/api/admin' + p, b, admin);
   const ana = (await adm('POST', '/pros', { name: 'Ana Gómez', email: 'ana.pro@ejemplo.com', password: 'clave-de-ana', services: [1, 2, 3], pay: { type: 'comision', percent: 40 } })).pro;
@@ -260,7 +262,7 @@ test('transferencia: se guarda hasta 1 hora antes del turno y no se ofrece para 
 });
 
 test('migración de la carta de manicuría: actualiza, suma y saca servicios sin perder ids ni turnos', async () => {
-  const st = seedState(), env = makeEnv();
+  const st = bare(), env = makeEnv();
   // Estado viejo: la carta de octubre.
   st.services = st.services.filter((s) => s.category !== 'manicuria');
   const old = [['esmaltado-semipermanente', 'Esmaltado semipermanente', 16000], ['esmaltado-tradicional', 'Esmaltado tradicional', 10000], ['soft-gel-sencillo', 'Soft gel', 25000], ['soft-gel-complejo', 'Soft gel', 30000], ['retirado-semi-capping', 'Retirado de semi o capping', 5000]];
@@ -276,7 +278,7 @@ test('migración de la carta de manicuría: actualiza, suma y saca servicios sin
   assert.equal(mani[0].price, 20000); assert.equal(mani[0].price_transfer, 22000);
   assert.ok(st.services.find((s) => s.id === trad.id && !s.visible), 'con turnos por delante se oculta');
   assert.ok(!st.services.some((s) => s.slug === 'soft-gel-complejo'));
-  assert.ok(mani.every((s) => st.staff[0].services.includes(s.id)), 'la manicura queda asignada a la carta nueva');
+  assert.ok(mani.every((s) => st.staff.find((u) => u.name === 'Sol').services.includes(s.id)), 'la manicura queda asignada a la carta nueva');
 });
 
 test('migración de rituales y terraza: precios nuevos, sin coworking ni salón para alquilar', async () => {
@@ -295,4 +297,21 @@ test('migración de rituales y terraza: precios nuevos, sin coworking ni salón 
   assert.equal(svc('alquiler-del-espacio').image, '');
   assert.deepEqual(st.settings.giftcards.amounts, [45000, 60000, 90000, 100000]);
   assert.ok(!JSON.stringify(site).toLowerCase().includes('coworking'));
+});
+
+test('profesionales de la casa: Trinidad en head spa y Belén en manicuría, también en estados guardados', async () => {
+  const st = seedState(), env = makeEnv();
+  const pro = (n) => st.staff.find((u) => u.role === 'pro' && u.name === n);
+  const ids = (cat) => st.services.filter((s) => s.category === cat && s.mode !== 'menu').map((s) => s.id).sort();
+  assert.deepEqual([...pro('Trinidad').services].sort(), ids('rituales'));
+  assert.deepEqual([...pro('Belén').services].sort(), ids('manicuria'));
+  // La reserva se asigna sola a quien corresponde.
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: st.services.find((s) => s.slug === 'dipping').id, date: '2026-11-04', time: '10:00', ...who });
+  assert.equal(st.bookings.find((b) => b.token === r.booking.token).pro_name, 'Belén');
+  // Estado guardado sin profesionales: la migración las suma una sola vez.
+  const old = bare(); old.meta.migrations = old.meta.migrations.filter((k) => k !== 'profesionales-2026-11');
+  await call(old, env, 'GET', '/api/site');
+  await call(old, env, 'GET', '/api/site');
+  assert.equal(old.staff.filter((u) => u.role === 'pro').length, 2);
+  assert.ok(old.staff.find((u) => u.name === 'Trinidad').services.length === 3);
 });

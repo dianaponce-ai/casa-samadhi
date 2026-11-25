@@ -20,17 +20,17 @@ function seedDemo() {
   st.customers = [];
   const slugIds = (list) => list.map((x) => st.services.find((s) => s.slug === x)?.id).filter(Boolean);
   for (const u of DEMO_USERS) {
+    // En la demo, el acceso de profesional de prueba es el de Trinidad (head spa).
+    const tri = u.role === 'pro' && st.staff.find((x) => x.role === 'pro' && x.name === 'Trinidad');
+    if (tri) { Object.assign(tri, { email: u.email, password_hash: 'demo$' + u.password, phone: '221 555-4010', pay: u.pay }); continue; }
     if (u.kind === 'staff') st.staff.push({ id: ++st.ids.staff, email: u.email, name: u.name, role: u.role, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 120 * 864e5).toISOString(),
       ...(u.role === 'pro' ? { active: true, specialty: u.specialty, phone: '221 555-4010', services: slugIds(u.services), pay: u.pay } : {}) });
     else st.customers.push({ id: (st.ids.customer = (st.ids.customer || 0) + 1), email: u.email, name: u.name, phone: u.phone, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 40 * 864e5).toISOString() });
   }
   st.settings.booking.staffEmails = 'turnos@casasamadhi.demo';
-  // Profesionales de ejemplo (además de la del usuario de prueba) y datos para transferir.
-  const ago = new Date(Date.now() - 200 * 864e5).toISOString();
-  st.staff.push({ id: ++st.ids.staff, email: '', name: 'Sol Ruiz', role: 'pro', password_hash: null, created_at: ago, active: true, specialty: 'Manicuría', phone: '221 555-4020',
-    services: st.services.filter((s) => s.category === 'manicuria').map((s) => s.id), pay: { type: 'basico_comision', percent: 25, base: 350000 } });
-  st.staff.push({ id: ++st.ids.staff, email: '', name: 'Mica Paz', role: 'pro', password_hash: null, created_at: ago, active: true, specialty: 'Masajes', phone: '221 555-4030',
-    services: slugIds(['ritual-profundo', 'masoterapia-relajante']), pay: { type: 'comision', percent: 45, base: 0 } });
+  // Profesionales: Trinidad (head spa) y Belén (manicuría) ya vienen en los datos iniciales; en la demo, con comisión de ejemplo.
+  const bel = st.staff.find((x) => x.role === 'pro' && x.name === 'Belén');
+  if (bel) Object.assign(bel, { phone: '221 555-4020', pay: { type: 'comision', percent: 40, base: 0 } });
   st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'ALIAS.DE.PRUEBA', holder: 'Casa Samadhi (datos de prueba)', bank: 'Banco de ejemplo' };
   // Turnos de ejemplo: los últimos 90 días y las próximas dos semanas.
   let seed = 11; const r = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
@@ -107,12 +107,12 @@ function seedDemo() {
   st.bookings.push({ id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: 'tr' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2), group: null, service_id: s1.id, service_name: s1.name, resource: s1.resource,
     pro_id: p1?.id || null, pro_name: p1?.name || '', start: `${t} ${tt}`, duration: s1.duration, price: s1.price, deposit: 18000, deposit_due: 18000, deposit_paid: 0, gift_id: null, gift_code: '', gift_applied: 0,
     name: 'Martina Herrera', email: 'martina.herrera@ejemplo.com', phone: '221 555-6611', notes: '', status: 'pending_transfer', source: 'web', created_at: cr, pay_method: 'transfer', transfer_notified: new Date(Date.now() - 3600e3).toISOString(),
-    hold_until: new Date(Date.now() + 10 * 3600e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: cr, text: 'Reservado: seña de $ 16.500 por transferencia, a verificar' }, { at: new Date(Date.now() - 3600e3).toISOString(), text: 'La clienta avisó que ya transfirió' }] });
+    hold_until: new Date(Date.now() + 10 * 3600e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: cr, text: 'Reservado: seña de $ 18.000 por transferencia, a verificar' }, { at: new Date(Date.now() - 3600e3).toISOString(), text: 'La clienta avisó que ya transfirió' }] });
   // Historial de cambios de ejemplo
   const adm = st.staff.find((u) => u.role === 'admin'), rec = st.staff.find((u) => u.role === 'staff'), ana = pros[0];
   const log = (u, h, action) => st.audit.push({ id: (st.ids.audit = (st.ids.audit || 0) + 1), at: new Date(Date.now() - h * 3600e3).toISOString(), user_id: u.id, user: u.name, role: u.role, action });
-  log(adm, 240, 'Creó la profesional Sol Ruiz · Básico + comisión 25% + básico $ 350.000');
-  log(adm, 239, 'Creó la profesional Mica Paz · Solo comisión 45%');
+  log(adm, 240, 'Editó la profesional Trinidad · Solo comisión 40%');
+  log(adm, 239, 'Editó la profesional Belén · Solo comisión 40%');
   log(adm, 200, 'Cambió la configuración: medios de pago');
   log(rec, 50, 'Cargó el turno de un llamado por WhatsApp');
   log(ana, 30, 'Ingresó al panel');
