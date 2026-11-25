@@ -44,7 +44,7 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('o
 // ── Portada ──────────────────────────────────────────────
 const SLIDES = [
   { img: 'media/headspa-ritual.webp', pos: 'center 62%', eyebrow: 'Head spa', title: 'Un ritual esencial', sub: 'Agua tibia, aromas y manos que saben. Una hora solo para vos.', cta: ['Reservar', 'book:ritual-esencial'], cta2: ['Ver rituales', '#rituales'] },
-  { img: 'media/camilla.webp', pos: 'center 55%', eyebrow: 'Masajes', title: 'Soltá el cuerpo', sub: 'Masoterapia relajante con pindas herbales calientes y sonidos de cuencos.', cta: ['Reservar', 'book:masoterapia-relajante'] },
+  { img: 'media/headspa-agua.webp', pos: 'center 50%', eyebrow: 'Head spa + masajes', title: 'Ritual profundo', sub: 'Pindas herbales calientes, sonidos de cuenco y aromaterapia. La experiencia más completa.', cta: ['Reservar', 'book:ritual-profundo'] },
   { img: 'media/manicuria-lampara.webp', pos: '84% 60%', eyebrow: 'Manicuría & pedicuría', title: 'Tu momento, tu lugar', sub: 'En el salón de arriba, con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
   { img: 'media/cafeteria.webp', eyebrow: 'Cafetería & eventos', title: 'Café, spa & momentos', sub: 'Cafetería en planta baja, eventos en el patio y la terraza para tus festejos.', cta: ['Conocé la casa', '#cafe'] },
 ];
@@ -258,7 +258,7 @@ function svcIcon(s) {
   if (n.includes('retirado')) return 'spark';
   if (s.category === 'manicuria') return 'polish';
   if (n.includes('profundo') || n.includes('pinda')) return 'pinda';
-  if (n.includes('masoterapia') || n.includes('masaje')) return 'hand';
+  if (n.includes('masaje')) return 'hand';
   if (s.category === 'rituales') return 'head';
   if (s.category === 'terapias') return 'spark';
   return 'leaf';
