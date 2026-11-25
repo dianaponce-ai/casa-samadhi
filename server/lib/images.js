@@ -8,12 +8,12 @@ import { ApiError } from '../core/spa-core.js';
 
 export const UPLOADS = path.join(config.dataDir, 'uploads');
 mkdirSync(UPLOADS, { recursive: true });
-const TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
+const TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' };
 const MAX = 4 * 1024 * 1024;
 
-export async function saveImage(dataUrl, prefix = 'foto') {
-  const m = /^data:(image\/(?:webp|jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
-  if (!m) throw new ApiError(422, 'Elegí una foto (JPG, PNG o WEBP).');
+export async function saveImage(dataUrl, prefix = 'foto', { pdf = false } = {}) {
+  const m = /^data:(image\/(?:webp|jpeg|png)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m || (m[1] === 'application/pdf' && !pdf)) throw new ApiError(422, pdf ? 'Subí una foto (JPG, PNG o WEBP) o un PDF.' : 'Elegí una foto (JPG, PNG o WEBP).');
   const buf = Buffer.from(m[2], 'base64');
   if (!buf.length || buf.length > MAX) throw new ApiError(422, 'La foto es muy pesada. Probá con una de menos de 4 MB.');
   const name = `${prefix.replace(/[^a-z0-9-]/gi, '')}-${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${TYPES[m[1]]}`;

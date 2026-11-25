@@ -330,6 +330,7 @@ async function viewBooking(id) {
       <p>${esc(b.name)} eligió pagar la seña por transferencia: <b>${fmt(group_due || b.deposit_due)}</b>${group.length > 1 ? ' por toda la reserva' : ''}.${b.transfer_notified ? ` <b>Avisó que ya transfirió</b> (${at(b.transfer_notified)}).` : ' Todavía no avisó que transfirió.'} ${b.status === 'expired' ? 'El plazo venció: si la plata llegó igual, confirmala y se revisa si el horario sigue libre.' : `El turno queda guardado hasta el ${at(b.hold_until)}`}</p>
       <div class="row"><label class="fl"><span>Monto recibido ($)</span><input id="tAmt" type="number" min="0" value="${group_due || b.deposit_due}"></label></div>
       <div class="actions"><button class="btn primary" id="tOk">Llegó la transferencia: confirmar</button><button class="btn danger" id="tNo">No llegó: cancelar</button></div>
+      ${b.transfer_proof ? `<p><a class="btn" href="${IMG(b.transfer_proof)}" target="_blank" rel="noopener">Ver el comprobante que subió</a></p>` : '<p class="small muted">Todavía no subió el comprobante.</p>'}
       <p class="small muted">Al confirmar, a la clienta le llega el email de turno confirmado y a la asesora, el aviso de su turno.</p></div>` : ''}
     ${rest > (b.collected || 0) && ['confirmed', 'completed', 'attention'].includes(b.status) && !isPro() ? `<div class="card form" style="margin-bottom:14px"><h2>Cobrar en la casa</h2>
       <p class="small muted">Resta cobrar <b>${fmt(rest - (b.collected || 0))}</b>${b.collected ? ` (ya se cobraron ${fmt(b.collected)})` : ''}. Queda registrado en la caja del día.</p>
@@ -880,7 +881,7 @@ async function viewWithdrawals() {
 
 // ── Configuración ────────────────────────────────────────
 async function viewSettings() {
-  const { settings: S } = await api('/settings');
+  const [{ settings: S }, NF] = await Promise.all([api('/settings'), api('/nifty').catch(() => null)]);
   const s = S.site, b = S.booking, g = S.giftcards, p = S.pay || {};
   const inp = (k, label, v, extra = '') => `<label class="fl"><span>${label}</span><input data-k="${k}" value="${esc(v)}" ${extra}></label>`;
   $('#view').innerHTML = `<div class="page-head"><div><h1>Configuración</h1></div><div class="actions"><button class="btn primary" id="setSave">Guardar cambios</button></div></div>
@@ -895,6 +896,14 @@ async function viewSettings() {
         <div class="row">${inp('booking.slotStep', 'Turnos cada (minutos)', b.slotStep, 'type="number" min="5" step="5"')}${inp('booking.holdMinutes', 'Minutos para pagar la seña', b.holdMinutes, 'type="number" min="10"')}${inp('booking.cancelHours', 'Cancelar online hasta (horas antes)', b.cancelHours, 'type="number" min="0"')}</div>
         <div class="row">${inp('booking.reminderHours', 'Recordatorio (horas antes)', b.reminderHours, 'type="number" min="0"')}${inp('booking.staffEmails', 'Avisos de turnos nuevos a (emails separados por coma)', b.staffEmails)}</div>
         <p class="small muted">Con seña en 0% los turnos online se confirman sin pagar nada.</p></div>
+      ${NF ? `<div class="card form" id="nfCard"><h2>Integración con Nifty</h2>
+        <p class="small muted">Cada turno (reservado, confirmado, realizado o cancelado) se manda al embudo de Casa Samadhi en Nifty, con el canal del que vino (Meta, Google u Otro). No se mandan datos de las clientas. La dirección y la clave se generan en Nifty: ficha del cliente → Embudo → Turnos → Conectar sistema de reservas.</p>
+        <label class="check"><input type="checkbox" id="nfOn" ${NF.enabled ? 'checked' : ''}> Mandar los turnos a Nifty</label>
+        <label class="fl"><span>Dirección</span><input id="nfUrl" value="${esc(NF.url || '')}" placeholder="https://nifty-agency.com/webhooks/turnos/47"></label>
+        <label class="fl"><span>Clave</span><input id="nfKey" type="password" autocomplete="off" placeholder="${NF.has_secret ? 'Guardada (escribí una nueva para cambiarla)' : 'nft_…'}"></label>
+        <p class="small">${NF.enabled ? `Enviados: <b>${NF.sent}</b> turnos${NF.last_ok ? ` · último envío ${at(NF.last_ok)}` : ''}${NF.pending ? ` · <b>${NF.pending}</b> por enviar (se mandan cada minuto)` : ' · todo al día'}` : 'Apagada.'}</p>
+        ${NF.last_error ? `<p class="err">Último error: ${esc(NF.last_error)}</p>` : ''}<p class="err" id="nfErr"></p>
+        <div class="actions"><button class="btn" id="nfTest">Probar conexión</button><button class="btn primary" id="nfSave">Guardar integración</button></div></div>` : ''}
       <div class="card form"><h2>Medios de pago de la seña</h2>
         <label class="check"><input type="checkbox" data-k="pay.mpEnabled" ${p.mpEnabled !== false ? 'checked' : ''}> Mercado Pago (se confirma solo al acreditarse)</label>
         <label class="check"><input type="checkbox" data-k="pay.transferEnabled" ${p.transferEnabled ? 'checked' : ''}> Transferencia bancaria (la confirmás vos desde el turno o el Resumen)</label>
@@ -905,6 +914,15 @@ async function viewSettings() {
       <div class="card form"><h2>Gift cards</h2><label class="check"><input type="checkbox" data-k="giftcards.enabled" ${g.enabled ? 'checked' : ''}> Vender gift cards en la web</label>
         ${inp('giftcards.amounts', 'Montos sugeridos (separados por coma)', g.amounts.join(', '))}<div class="row">${inp('giftcards.min', 'Monto mínimo', g.min, 'type="number" min="0"')}${inp('giftcards.validityDays', 'Validez (días)', g.validityDays, 'type="number" min="7"')}</div></div>
     </div>`;
+  $('#nfSave')?.addEventListener('click', async () => {
+    $('#nfErr').textContent = '';
+    try { await api('/nifty', { method: 'PUT', body: { enabled: $('#nfOn').checked, url: $('#nfUrl').value, ...($('#nfKey').value ? { secret: $('#nfKey').value } : {}) } }); toast('Integración guardada'); viewSettings(); } catch (e) { $('#nfErr').textContent = e.message; }
+  });
+  $('#nfTest')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; $('#nfErr').textContent = '';
+    try { await api('/nifty/test', { method: 'POST', body: {} }); toast('Nifty respondió bien'); } catch (err) { $('#nfErr').textContent = err.message; }
+    e.target.disabled = false;
+  });
   $('#setSave').onclick = async () => {
     const groups = { site: {}, booking: {}, pay: {}, giftcards: {} };
     for (const el of $$('[data-k]')) { const [grp, k] = el.dataset.k.split('.'); groups[grp][k] = el.type === 'checkbox' ? el.checked : el.value; }
