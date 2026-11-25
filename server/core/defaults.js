@@ -58,10 +58,10 @@ export const SERVICES = [
     includes: ['Terraza al aire libre', 'Cumpleaños, celebraciones y encuentros', 'Cafetería de la casa en planta baja', 'Calle 47 N° 679, La Plata'] },
 ];
 
-// Asesoras que atienden los turnos. La comisión y el acceso al panel se completan en Panel → Asesoras.
+// Asesoras que atienden los turnos: 40% de comisión. El acceso al panel se carga en Panel → Asesoras de belleza.
 export const PROS = [
-  { name: 'Trinidad', specialty: 'Head spa y masajes', categories: ['rituales'] },
-  { name: 'Belén', specialty: 'Manicuría y pedicuría', categories: ['manicuria'] },
+  { name: 'Trinidad', specialty: 'Head spa y masajes', categories: ['rituales'], percent: 40 },
+  { name: 'Belén', specialty: 'Manicuría y pedicuría', categories: ['manicuria'], percent: 40 },
 ];
 
 // Web master (Nifty Agency): entra al panel con todos los permisos. Se crea sin contraseña:
