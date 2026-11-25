@@ -10,7 +10,11 @@ const SOLO = /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(
 // Meta Pixel: eventos estándar (si el pixel está cargado).
 const px = (ev, data) => { try { window.fbq?.('track', ev, data); } catch {} };
 // Una sola vez por turno o gift card en este navegador (para no contar dos veces si vuelven a abrir el link).
-const pxOnce = (key, ev, data) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} px(ev, data); };
+const pxOnce = (key, ev, data, custom = false) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} if (custom) { try { window.fbq?.('trackCustom', ev, data); } catch {} } else px(ev, data); };
+const bkName = (b) => (b.items?.length > 1 ? b.items.map((it) => it.service_name).join(' + ') : b.service_name);
+// Transferencia: cuenta como turno (Schedule) cuando la clienta avisa "Ya transferí" o manda el comprobante por WhatsApp.
+const pxTransfer = (b, via) => { if (!b) return; pxOnce('turno:' + b.token, 'Schedule', { content_name: bkName(b), value: b.price || 0, currency: 'ARS', pay_method: 'transferencia' }); pxOnce('comp:' + b.token, 'ComprobanteEnviado', { content_name: bkName(b), value: b.deposit_due || b.price || 0, currency: 'ARS', via }, true); };
+let shownBooking = null;
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -475,7 +479,7 @@ function transferBlock(b) {
     <p class="note">Guardamos tu turno hasta el ${esc(new Date(b.hold_until).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }).replace(',', ''))}. Cuando veamos la transferencia te llega la confirmación por email.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
       ${T.notified ? '<span class="pill ok">Ya nos avisaste: la estamos verificando</span>' : `<button class="btn solid" data-tsent="${esc(b.token)}">Ya transferí</button>`}
-      <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, msg)}" target="_blank" rel="noopener">Mandar comprobante</a>
+      <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, msg)}" target="_blank" rel="noopener" data-comp="${esc(b.token)}">Mandar comprobante</a>
       ${T.can_mp ? `<button class="btn" data-paymp="${esc(b.token)}">Prefiero pagar con Mercado Pago</button>` : ''}
     </div></div>`;
 }
@@ -488,7 +492,8 @@ async function showBooking(token, pre, track = false) {
     const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
     const many = b.items?.length > 1;
     // Schedule: solo al volver del pago (o al reservar sin seña) con el turno ya confirmado.
-    if (track && b.status === 'confirmed') pxOnce('turno:' + b.token, 'Schedule', { content_name: many ? b.items.map((it) => it.service_name).join(' + ') : b.service_name, value: b.price || 0, currency: 'ARS' });
+    shownBooking = b;
+    if (track && b.status === 'confirmed') pxOnce('turno:' + b.token, 'Schedule', { content_name: bkName(b), value: b.price || 0, currency: 'ARS', pay_method: 'mercadopago' });
     $('#drawer').innerHTML = `${head(many ? 'Tu reserva' : 'Tu turno')}<div class="dbody"><div class="status">
       <span class="pill ${okS ? 'ok' : badS ? 'bad' : ''}">${esc(b.status_label)}</span>
       <div class="big">${b.status === 'confirmed' ? '¡Te esperamos!' : b.status === 'pending_payment' ? 'Falta la seña' : b.status === 'pending_transfer' ? 'Falta la transferencia' : esc(b.service_name)}</div>
@@ -790,6 +795,7 @@ function bind() {
   document.addEventListener('click', async (e) => {
     const t = e.target;
     if (t.closest('a[href^="https://wa.me"]')) px('Contact', { content_name: 'WhatsApp' });
+    const comp = t.closest('[data-comp]'); if (comp && shownBooking?.token === comp.dataset.comp) pxTransfer(shownBooking, 'whatsapp');
     const act = t.closest('[data-act]')?.dataset.act;
     if (act) { const [k, v] = act.split(':'); if (k === 'book') openBooking({ serviceId: svcBySlug(v)?.id }); if (k === 'cat') openBooking({ category: v }); return; }
     const wk = t.closest('[data-work]'); if (wk) { const [sid, i] = wk.dataset.work.split(':'); return openWork(sid, Number(i)); }
@@ -855,7 +861,7 @@ function bind() {
     if (t.closest('[data-add-item]')) { readBkForm(); Object.assign(bk, { step: 1, service: null, pro: null, filter: null, error: '' }); return renderBooking(); }
     const cp = t.closest('[data-copy]'); if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copiado'); } catch { toast(cp.dataset.copy); } return; }
     const ts = t.closest('[data-tsent]');
-    if (ts) { ts.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(ts.dataset.tsent)}/transfer-sent`, {}); toast('¡Gracias! La verificamos y te confirmamos'); showBooking(r.booking.token, r.booking); } catch (err) { toast(err.message); ts.disabled = false; } return; }
+    if (ts) { ts.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(ts.dataset.tsent)}/transfer-sent`, {}); pxTransfer(r.booking, 'ya_transferi'); toast('¡Gracias! La verificamos y te confirmamos'); showBooking(r.booking.token, r.booking); } catch (err) { toast(err.message); ts.disabled = false; } return; }
     const pm = t.closest('[data-paymp]');
     if (pm) { pm.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(pm.dataset.paymp)}/pay-mp`, {}); goPay(r.pay_url); } catch (err) { toast(err.message); pm.disabled = false; } return; }
     if (t.matches('input[name="pay_method"]')) { readBkForm(); return renderBooking(); }
