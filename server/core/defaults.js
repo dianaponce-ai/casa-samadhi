@@ -43,10 +43,14 @@ export const SERVICES = [
     short: 'Perfecto para liberar tensión física. No incluye head spa.',
     includes: ['Masaje relajante corporal', 'Aromaterapia', 'Pindas herbales calientes', 'Sonidos de cuencos'] },
 
+  // works: trabajos de ejemplo (antes y después). El "antes" es el mismo para todos: SITE.worksBefore.
   // Manicuría: carta de noviembre 2026. `price` es el precio en efectivo (sobre ese se calcula la seña); `price_transfer`, con transferencia.
-  { slug: 'esmaltado-semipermanente', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Semipermanente', duration: 60, price: 20000, price_transfer: 22000, image: 'media/unas.webp' },
-  { slug: 'soft-gel', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Soft gel', duration: 90, price: 30000, price_transfer: 32000 },
-  { slug: 'dipping', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Dipping', duration: 75, price: 22000, price_transfer: 24000 },
+  { slug: 'esmaltado-semipermanente', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Semipermanente', duration: 60, price: 20000, price_transfer: 22000, image: 'media/unas.webp',
+    works: [{ id: 'w1', after: 'media/trabajos/semi-verde-oliva.webp' }, { id: 'w2', after: 'media/trabajos/semi-negro-glitter.webp' }] },
+  { slug: 'soft-gel', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Soft gel', duration: 90, price: 30000, price_transfer: 32000,
+    works: [{ id: 'w3', after: 'media/trabajos/softgel-rosa-glitter.webp' }] },
+  { slug: 'dipping', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Dipping', duration: 75, price: 22000, price_transfer: 24000,
+    works: [{ id: 'w4', after: 'media/trabajos/dipping-blanco-lechoso.webp' }] },
   { slug: 'belleza-de-pies', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Belleza de pies', duration: 60, price: 23000, price_transfer: 25000 },
   { slug: 'combo-manos-y-pies-semi', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Combo manos y pies', tag: 'Semipermanente', duration: 120, price: 40000, price_transfer: 42000 },
   { slug: 'pedicuria', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Pedicuría', duration: 75, price: 32000, price_transfer: 34000 },
@@ -79,6 +83,7 @@ export const SITE = {
   eventsWhatsapp: '221 504-6554',
   instagram: 'casasamadhistyle',
   storeInstagram: 'samadhistyle',
+  worksBefore: 'media/trabajos/antes.webp', // foto de "antes" para todos los trabajos (se cambia en Panel → Servicios)
   email: '',
   storeUrl: 'https://samadhi-store.vercel.app',
   announcement: 'Head spa · Manicuría · Terapias · Cafetería — Calle 47 N° 679, La Plata',

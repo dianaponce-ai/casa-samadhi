@@ -315,3 +315,26 @@ test('profesionales de la casa: Trinidad en head spa y Belén en manicuría, tam
   assert.equal(old.staff.filter((u) => u.role === 'pro').length, 2);
   assert.ok(old.staff.find((u) => u.name === 'Trinidad').services.length === 3);
 });
+
+test('trabajos (antes y después): ejemplos en manicuría, se suben, se ordenan y se borran', async () => {
+  const st = bare(), env = { ...makeEnv(), saveImage: async (d, p) => `uploads/${p}-${d.length}.webp`, deleted: [] };
+  env.deleteImage = async (f) => env.deleted.push(f);
+  const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
+  const site = await call(st, env, 'GET', '/api/site');
+  const semi = site.services.find((s) => s.slug === 'esmaltado-semipermanente');
+  assert.equal(semi.works.length, 2);
+  assert.ok(site.site.worksBefore.endsWith('antes.webp'));
+  const img = 'data:image/webp;base64,AAAA';
+  const r = await call(st, env, 'POST', `/api/admin/services/${semi.id}/works`, { after: img }, admin);
+  assert.equal(r.service.works.length, 3);
+  assert.equal(r.service.works[0].after, 'uploads/despues-27.webp'); // el más nuevo, primero
+  assert.equal(r.service.works[0].before, '');
+  // La web muestra hasta 8.
+  for (let i = 0; i < 7; i++) await call(st, env, 'POST', `/api/admin/services/${semi.id}/works`, { after: img }, admin);
+  assert.equal((await call(st, env, 'GET', '/api/site')).services.find((s) => s.id === semi.id).works.length, 8);
+  const del = await call(st, env, 'DELETE', `/api/admin/services/${semi.id}/works/${r.service.works[0].id}`, undefined, admin);
+  assert.equal(del.service.works.length, 9);
+  assert.deepEqual(env.deleted, ['uploads/despues-27.webp']);
+  const before = await call(st, env, 'PUT', '/api/admin/works-before', { image: img }, admin);
+  assert.equal(st.settings.site.worksBefore, before.worksBefore);
+});

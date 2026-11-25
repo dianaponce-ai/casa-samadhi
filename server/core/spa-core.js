@@ -155,7 +155,7 @@ export function seedState() {
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, audit: 0, bookingNumber: 1000 },
   };
-  SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, ...structuredClone(s) }));
+  SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, works: [], ...structuredClone(s) }));
   addDefaultPros(st, new Date(0).toISOString());
   return st;
 }
@@ -257,7 +257,10 @@ export function availability(st, env, serviceId, from, days = 14, pro = null) {
 }
 
 // ── Vistas públicas ──────────────────────────────────────
-const publicService = (st, s) => ({ id: s.id, slug: s.slug, category: s.category, name: s.name, tag: s.tag, short: s.short, includes: s.includes, duration: s.duration, price: s.price, price_transfer: s.price_transfer ?? null, mode: s.mode, image: s.image, featured: !!s.featured, whatsapp: s.whatsapp || '',
+const MAX_WORKS_PUBLIC = 8; // la web muestra hasta 8 (el celular, hasta 4)
+export const MAX_WORKS = 24;
+const publicService = (st, s) => ({ id: s.id, slug: s.slug, category: s.category, name: s.name, tag: s.tag, short: s.short, includes: s.includes, duration: s.duration, price: s.price, price_transfer: s.price_transfer ?? null, mode: s.mode, image: s.image,
+  works: (s.works || []).slice(0, MAX_WORKS_PUBLIC).map((w) => ({ id: w.id, after: w.after, before: w.before || '' })), featured: !!s.featured, whatsapp: s.whatsapp || '',
   pros: prosFor(st, s).map((p) => ({ id: p.id, name: p.name })) });
 const transferOn = (P) => !!(P.transferEnabled && (P.alias || P.cbu));
 const mpOn = (P) => P.mpEnabled !== false;
@@ -1016,8 +1019,39 @@ export async function handle(st, env, req) {
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'GET') return ok(clientDetail(st, env, q.key));
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'PATCH') { const r = saveClient(st, env, body.key, body, staff); audit(st, env, staff, `Editó la ficha de ${r.client.name}`); return ok(r); }
 
+
+  // Trabajos (antes y después) de un servicio: se suben desde el panel y se ven en la web y el turnero.
+  if (A[0] === 'works-before' && method === 'PUT') {
+    if (!env.saveImage) fail(501, 'Este servidor no puede guardar fotos.');
+    const prev = st.settings.site.worksBefore;
+    st.settings.site.worksBefore = await env.saveImage(body.image, 'antes');
+    if (prev && prev !== SITE.worksBefore) await env.deleteImage?.(prev);
+    audit(st, env, staff, 'Cambió la foto de "antes" de los trabajos');
+    return ok({ worksBefore: st.settings.site.worksBefore });
+  }
+  if (A[0] === 'services' && A[2] === 'works') {
+    const s = st.services.find((x) => x.id === Number(A[1]));
+    if (!s) fail(404, 'No encontramos ese servicio.');
+    s.works = s.works || [];
+    if (method === 'POST') {
+      if (!env.saveImage) fail(501, 'Este servidor no puede guardar fotos.');
+      if (s.works.length >= MAX_WORKS) fail(422, `Llegaste al máximo de ${MAX_WORKS} trabajos para este servicio. Borrá alguno viejo para sumar otro.`);
+      const w = { id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), after: await env.saveImage(body.after, 'despues'), before: body.before ? await env.saveImage(body.before, 'antes') : '', created_at: iso(env) };
+      s.works.unshift(w); // el más nuevo, primero
+      audit(st, env, staff, `Sumó un trabajo (antes y después) a ${s.name}`);
+      return ok({ service: s });
+    }
+    if (method === 'DELETE' && A[3]) {
+      const i = s.works.findIndex((w) => w.id === A[3]);
+      if (i < 0) fail(404, 'No encontramos ese trabajo.');
+      const [w] = s.works.splice(i, 1);
+      for (const f of [w.after, w.before]) if (f) await env.deleteImage?.(f);
+      audit(st, env, staff, `Borró un trabajo de ${s.name}`);
+      return ok({ service: s });
+    }
+  }
   if (A[0] === 'services') {
-    if (method === 'GET') return ok({ services: [...st.services].sort((a, b) => a.position - b.position), categories: st.settings.categories, resources: st.settings.resources });
+    if (method === 'GET') return ok({ services: [...st.services].sort((a, b) => a.position - b.position), categories: st.settings.categories, resources: st.settings.resources, worksBefore: st.settings.site.worksBefore || '', maxWorks: MAX_WORKS });
     if (method === 'POST' && !A[1]) {
       const s = serviceInput(st, { mode: 'online', duration: 60, visible: true, category: st.settings.categories[0].key, resource: st.settings.resources[0].key, ...body }, { includes: [], days: [], tag: '', short: '', image: '', whatsapp: '', featured: false });
       s.id = ++st.ids.service; s.position = st.services.length; s.slug = slugify(s.name) + (st.services.some((x) => x.slug === slugify(s.name)) ? '-' + s.id : '');
