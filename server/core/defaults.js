@@ -58,11 +58,15 @@ export const SERVICES = [
     includes: ['Terraza al aire libre', 'Cumpleaños, celebraciones y encuentros', 'Cafetería de la casa en planta baja', 'Calle 47 N° 679, La Plata'] },
 ];
 
-// Profesionales que atienden los turnos. La comisión y el acceso al panel se completan en Panel → Profesionales.
+// Asesoras que atienden los turnos. La comisión y el acceso al panel se completan en Panel → Asesoras.
 export const PROS = [
   { name: 'Trinidad', specialty: 'Head spa y masajes', categories: ['rituales'] },
   { name: 'Belén', specialty: 'Manicuría y pedicuría', categories: ['manicuria'] },
 ];
+
+// Web master (Nifty Agency): entra al panel con todos los permisos. Se crea sin contraseña:
+// la define con "¿Olvidaste tu contraseña?", con WEBMASTER_PASSWORD en el primer arranque o con npm run create-admin.
+export const WEBMASTER = { email: 'diana@nifty-agency.com', name: 'Diana · Web master' };
 
 export const SITE = {
   name: 'Casa Samadhi',

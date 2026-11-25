@@ -9,7 +9,7 @@ function makeEnv(start = Date.UTC(2026, 10, 3, 12, 0)) {
     createPayment: async ({ kind, token }) => `#pago/${kind}/${token}`, sendEmail: async (m) => { sent.push(m); return 'ok'; },
     hashPassword: async (p) => 'x$' + p, checkPassword: async (p, h) => h === 'x$' + p };
 }
-// Estado inicial sin las profesionales de la casa, para los tests que arman su propio equipo.
+// Estado inicial sin las asesoras de la casa, para los tests que arman su propio equipo.
 const bare = () => { const st = seedState(); st.staff = []; st.ids.staff = 0; return st; };
 const call = (st, env, method, path, body, staff) => handle(st, env, { method, path: path.split('?')[0], query: Object.fromEntries(new URLSearchParams(path.split('?')[1] || '')), body, staff }).then((r) => r.body);
 const who = { name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', accept: true };
@@ -200,14 +200,14 @@ test('transferencia: queda guardado, la clienta avisa y la administración confi
   assert.ok(st.audit.some((a) => a.user === 'Admin' && a.action.includes('Confirmó la transferencia')));
 });
 
-test('profesionales: se asignan solas, ven solo lo suyo, pueden cancelar y cobran su comisión', async () => {
+test('asesoras: se asignan solas, ven solo lo suyo, pueden cancelar y cobran su comisión', async () => {
   const st = bare(), env = makeEnv();
   const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
   const adm = (m, p, b) => call(st, env, m, '/api/admin' + p, b, admin);
   const ana = (await adm('POST', '/pros', { name: 'Ana Gómez', email: 'ana.pro@ejemplo.com', password: 'clave-de-ana', services: [1, 2, 3], pay: { type: 'comision', percent: 40 } })).pro;
   const sol = (await adm('POST', '/pros', { name: 'Sol Ruiz', services: [1], pay: { type: 'basico_comision', percent: 20, base: 300000 } })).pro;
   assert.equal(sol.has_access, false);
-  // Dos turnos a la misma hora: una profesional cada uno. Un tercero ya no entra.
+  // Dos turnos a la misma hora: una asesora cada uno. Un tercero ya no entra.
   const b1 = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who });
   const b2 = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who, email: 'otra@ejemplo.com' }).catch((e) => e);
   assert.equal(b2.status, 409); // la sala de head spa tiene capacidad 1
@@ -223,7 +223,12 @@ test('profesionales: se asignan solas, ven solo lo suyo, pueden cancelar y cobra
   assert.ok(mine.bookings.every((b) => b.pro_id === ana.id) && mine.bookings.length === 1);
   assert.equal(mine.bookings[0].email, undefined);
   await assert.rejects(proCall('GET', '/settings'), (e) => e.status === 403);
-  await assert.rejects(proCall('GET', '/clients'), (e) => e.status === 403);
+  // Ve solo sus clientas (las que atendió o va a atender), no las de otras asesoras.
+  const pc = await proCall('GET', '/clients');
+  assert.ok(pc.clients.length >= 1);
+  assert.ok(pc.clients.every((c) => st.bookings.some((b) => b.pro_id === ana.id && (b.email || '').toLowerCase() === c.key)));
+  const ajena = st.bookings.find((b) => b.pro_id !== ana.id && b.email && !st.bookings.some((x) => x.pro_id === ana.id && x.email === b.email));
+  if (ajena) await assert.rejects(proCall('GET', '/clients/ficha?key=' + encodeURIComponent(ajena.email)), (e) => e.status === 404);
   const other = st.bookings.find((b) => b.pro_id !== ana.id);
   await assert.rejects(proCall('GET', '/bookings/' + other.id), (e) => e.status === 404);
   await assert.rejects(proCall('PATCH', '/bookings/' + mine.bookings[0].id, { status: 'completed' }), (e) => e.status === 403);
@@ -248,7 +253,7 @@ test('profesionales: se asignan solas, ven solo lo suyo, pueden cancelar y cobra
   assert.equal(st.bookings.at(-1).status, 'cancelled');
   const log = await adm('GET', '/audit?user=' + ana.id);
   assert.ok(log.audit.some((a) => a.action.includes('Canceló el turno') && a.action.includes('Estoy enferma')));
-  assert.ok((await adm('GET', '/audit')).audit.some((a) => a.user === 'Admin' && a.action.includes('Creó la profesional Ana Gómez')));
+  assert.ok((await adm('GET', '/audit')).audit.some((a) => a.user === 'Admin' && a.action.includes('Creó la asesora Ana Gómez')));
 });
 
 test('transferencia: se guarda hasta 1 hora antes del turno y no se ofrece para turnos muy cercanos', async () => {
@@ -299,7 +304,7 @@ test('migración de rituales y terraza: precios nuevos, sin coworking ni salón 
   assert.ok(!JSON.stringify(site).toLowerCase().includes('coworking'));
 });
 
-test('profesionales de la casa: Trinidad en head spa y Belén en manicuría, también en estados guardados', async () => {
+test('asesoras de la casa: Trinidad en head spa y Belén en manicuría, también en estados guardados', async () => {
   const st = seedState(), env = makeEnv();
   const pro = (n) => st.staff.find((u) => u.role === 'pro' && u.name === n);
   const ids = (cat) => st.services.filter((s) => s.category === cat && s.mode !== 'menu').map((s) => s.id).sort();
@@ -308,7 +313,7 @@ test('profesionales de la casa: Trinidad en head spa y Belén en manicuría, tam
   // La reserva se asigna sola a quien corresponde.
   const r = await call(st, env, 'POST', '/api/bookings', { service_id: st.services.find((s) => s.slug === 'dipping').id, date: '2026-11-04', time: '10:00', ...who });
   assert.equal(st.bookings.find((b) => b.token === r.booking.token).pro_name, 'Belén');
-  // Estado guardado sin profesionales: la migración las suma una sola vez.
+  // Estado guardado sin asesoras: la migración las suma una sola vez.
   const old = bare(); old.meta.migrations = old.meta.migrations.filter((k) => k !== 'profesionales-2026-11');
   await call(old, env, 'GET', '/api/site');
   await call(old, env, 'GET', '/api/site');
@@ -409,4 +414,94 @@ test('la clienta cambia su turno desde el link y lo agrega al calendario', async
   // Con menos de las horas de cancelación, ya no se puede cambiar.
   env.advance(3 * 864e5);
   assert.equal((await call(st, env, 'GET', '/api/bookings/' + r.booking.token)).booking.can_reschedule, false);
+});
+
+test('roles: web master, administración, recepción y asesora de belleza', async () => {
+  const st = seedState(), env = makeEnv();
+  const wm = st.staff.find((u) => u.role === 'webmaster');
+  assert.equal(wm.email, 'diana@nifty-agency.com');
+  assert.equal(wm.password_hash, null); // la define con "¿Olvidaste tu contraseña?"
+  // Sin contraseña no entra.
+  await assert.rejects(call(st, env, 'POST', '/api/account/login', { email: wm.email, password: 'cualquier-cosa' }), (e) => e.status === 401);
+  wm.password_hash = 'x$clave-web-master';
+  const admin = { id: 900, email: 'adm@ejemplo.com', name: 'Adm', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin);
+  // El web master tiene los permisos de administración.
+  assert.ok((await call(st, env, 'GET', '/api/admin/users', undefined, wm)).roles.webmaster);
+  // Administración crea usuarios de cada rol, salvo web master.
+  const roles = (await call(st, env, 'GET', '/api/admin/users', undefined, admin)).roles;
+  assert.deepEqual(Object.keys(roles), ['admin', 'staff', 'pro']);
+  await assert.rejects(call(st, env, 'POST', '/api/admin/users', { email: 'otro@ejemplo.com', password: 'clave-larga-1', role: 'webmaster' }, admin), (e) => e.status === 422);
+  const ase = (await call(st, env, 'POST', '/api/admin/users', { name: 'Sofía', email: 'sofia@ejemplo.com', password: 'clave-larga-1', role: 'pro' }, admin)).user;
+  assert.equal(ase.role_label, 'Asesora de belleza');
+  assert.ok(st.staff.find((u) => u.id === ase.id).services);
+  // Solo un web master quita a otro web master.
+  await assert.rejects(call(st, env, 'DELETE', '/api/admin/users/' + wm.id, undefined, admin), (e) => e.status === 403);
+  const wm2 = (await call(st, env, 'POST', '/api/admin/users', { email: 'otro.wm@ejemplo.com', password: 'clave-larga-1', role: 'webmaster' }, wm)).user;
+  assert.equal(wm2.role, 'webmaster');
+  // Recepción no entra a Usuarios.
+  await assert.rejects(call(st, env, 'GET', '/api/admin/users', undefined, { id: 901, role: 'staff', name: 'R', password_hash: 'x$x' }), (e) => e.status === 403 || e.status === 401);
+});
+
+test('CRM: alta de clienta, datos, dónde vive, fotos de antes y después y lo que carga ella', async () => {
+  const st = bare(), env = { ...makeEnv(), saveImage: async (d, p) => `uploads/${p}-${d.length}.webp`, deleteImage: async () => {} };
+  const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
+  const adm = (m, p, b) => call(st, env, m, '/api/admin' + p, b, admin);
+  const r = await adm('POST', '/clients', { name: 'Marta López', phone: '221 555 7788', email: 'marta@ejemplo.com', birthday: '1988-03-14', address: 'City Bell' });
+  assert.equal(r.client.key, 'marta@ejemplo.com');
+  assert.equal(r.crm.address, 'City Bell');
+  await assert.rejects(adm('POST', '/clients', { name: 'Marta Otra', email: 'marta@ejemplo.com' }), (e) => e.status === 409);
+  // Aparece en la lista aunque no tenga turnos, y se busca por dónde vive.
+  assert.equal((await adm('GET', '/clients?q=city bell')).clients.length, 1);
+  // Se editan los datos sin perder nada.
+  await adm('PATCH', '/clients/ficha', { key: 'marta@ejemplo.com', name: 'Marta B. López', address: 'Gonnet', notes: 'Le gusta el té' });
+  const img = 'data:image/webp;base64,AAAA';
+  let d = await adm('POST', '/clients/photos', { key: 'marta@ejemplo.com', after: img, before: img, note: 'Soft gel nude' });
+  assert.equal(d.crm.photos.length, 1);
+  assert.equal(d.crm.name, 'Marta B. López');
+  assert.equal(d.crm.address, 'Gonnet');
+  assert.equal(d.crm.notes, 'Le gusta el té');
+  d = await adm('DELETE', '/clients/photos', { key: 'marta@ejemplo.com', id: d.crm.photos[0].id });
+  assert.equal(d.crm.photos.length, 0);
+  // La clienta con cuenta carga su cumpleaños y dónde vive: queda en la ficha.
+  const reg = await handle(st, env, { method: 'POST', path: '/api/account/register', query: {}, body: { name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', password: 'claveclave' } });
+  const customer = st.customers.find((c) => c.id === reg.customerSession.customer_id);
+  await handle(st, env, { method: 'PATCH', path: '/api/account/me', query: {}, body: { birthday: '1992-07-01', address: 'La Plata centro' }, customer });
+  const f = await adm('GET', '/clients/ficha?key=ana@ejemplo.com');
+  assert.equal(f.crm.birthday, '1992-07-01');
+  assert.equal(f.crm.address, 'La Plata centro');
+});
+
+test('caja: facturación del día, cobro del saldo, egresos y cierre de caja', async () => {
+  const st = bare(), env = makeEnv();
+  const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
+  const rec = { id: 2, email: 'r@a.com', name: 'Recepción', role: 'staff', password_hash: 'x$x' }; st.staff.push(rec); st.ids.staff = 2;
+  const adm = (m, p, b, who = admin) => call(st, env, m, '/api/admin' + p, b, who);
+  // Una seña pagada online hoy (3/11) entra sola en la facturación.
+  const svc = st.services.find((s) => s.slug === 'ritual-esencial');
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-03', time: '15:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
+  let c = await adm('GET', '/cash?date=2026-11-03');
+  assert.equal(c.income, 18000);
+  assert.equal(c.byMethod.mercadopago.in, 18000);
+  assert.equal(c.pending[0].rest, 42000); // saldo por cobrar en la casa
+  // Recepción cobra el saldo en efectivo y carga un egreso.
+  c = await adm('POST', '/cash/moves', { date: '2026-11-03', type: 'in', method: 'efectivo', amount: 42000, booking_id: st.bookings[0].id }, rec);
+  assert.equal(c.pending.length, 0);
+  c = await adm('POST', '/cash/moves', { date: '2026-11-03', type: 'out', method: 'efectivo', amount: 5000, concept: 'Insumos' }, rec);
+  assert.equal(c.income, 60000);
+  assert.equal(c.expenses, 5000);
+  assert.equal(c.cash.expected, 37000);
+  await assert.rejects(adm('POST', '/cash/moves', { type: 'in', method: 'efectivo', amount: 100 }, rec), (e) => e.status === 422); // sin concepto
+  // Cierre: faltan $1.000, se retiran $30.000 y quedan $6.000 de fondo para mañana.
+  c = await adm('POST', '/cash/close', { date: '2026-11-03', counted: 36000, withdrawn: 30000 }, rec);
+  assert.equal(c.closing.diff, -1000);
+  assert.equal(c.closing.leaves, 6000);
+  await assert.rejects(adm('POST', '/cash/moves', { date: '2026-11-03', type: 'in', method: 'efectivo', amount: 100, concept: 'x' }, rec), (e) => e.status === 409);
+  assert.equal((await adm('GET', '/cash?date=2026-11-04')).cash.opening, 6000);
+  // Solo administración reabre.
+  await assert.rejects(adm('POST', '/cash/reopen', { date: '2026-11-03' }, rec), (e) => e.status === 403);
+  c = await adm('POST', '/cash/reopen', { date: '2026-11-03' });
+  assert.equal(c.closing, null);
+  const g = await adm('GET', '/cash?date=2026-11-03');
+  assert.ok(g.billing.length === 14 && g.billing[0].income === 60000);
 });

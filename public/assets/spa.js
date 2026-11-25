@@ -755,7 +755,7 @@ function renderAccount() {
   if (acc.staff) {
     body = `<div class="status"><span class="pill ok">Equipo</span><div class="big">Hola, ${esc(acc.staff.name || acc.staff.email)}</div><p>Entraste con un usuario del equipo (${esc(acc.staff.role_label)}).</p><button class="btn solid" data-open-panel>Entrar al panel</button></div>`;
   } else if (!ACC && acc.mode === 'login') {
-    body = `<p class="doc-body" style="padding-top:14px">Ingresá para ver tus turnos y gift cards, cancelar o reservar de nuevo más rápido.</p>
+    body = `<p class="doc-body" style="padding-top:14px">Ingresá para ver tus datos y tus turnos, y reservar más rápido. <span class="note" style="display:block;margin-top:6px">¿Sos del equipo de Casa Samadhi? Con tu usuario entrás directo al panel.</span></p>
       <form class="bk" id="loginForm" novalidate>${field('email', 'Email', 'email', 'autocomplete="email" autofocus')}${field('password', 'Contraseña', 'password', 'autocomplete="current-password"')}
       ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<button class="btn solid" type="submit" ${acc.sending ? 'disabled' : ''}>Ingresar</button></form>
       <p class="note" style="margin-top:18px">¿No tenés cuenta? <button class="link-btn" data-acc-mode="register">Creala acá</button>. <button class="link-btn" data-acc-mode="forgot">¿Te olvidaste la contraseña?</button></p>${demoHint()}`;
@@ -779,18 +779,26 @@ function renderAccount() {
     const c = ACC.customer;
     const card = (b, past) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(b.service_name)}</b><br>${esc(cap(b.when))}${past ? ` · ${esc(b.status_label)}` : b.status !== 'confirmed' ? ` · ${esc(b.status_label)}` : ''}</dt><dd>${past ? `<button class="btn sm" data-rebook="${esc(b.service_name)}">Reservar de nuevo</button>` : `<button class="btn sm" data-show-turno="${esc(b.token)}">Ver</button>`}</dd></div></div>`;
     const S = ACC.stats || {};
+    const again = S.lastVisit && SITE.services.find((x) => S.lastVisit.service_name.startsWith(x.name) && x.mode === 'online');
     body = `<div class="status" style="gap:6px"><div class="big">Hola, ${esc(c.name.split(' ')[0])}</div><p class="note">${esc(c.email)} · ${esc(c.phone)}</p></div>
+      <div class="acc-book"><button class="btn solid" data-book>Reservar un turno</button>${again ? `<button class="btn" data-book-svc="${again.id}">Repetir ${esc(again.name)}</button>` : ''}</div>
       ${S.lastVisit ? `<div class="sel-sum welcome" style="margin-top:14px"><span class="w">Tu última visita</span><span class="n">${esc(cap(S.lastVisit.when))}</span><span class="w">${esc(S.lastVisit.service_name)} · ${S.visits} visita${S.visits === 1 ? '' : 's'} en Casa Samadhi${S.favorite && S.visits > 1 ? ` · tu favorito: ${esc(S.favorite)}` : ''}</span><button class="btn sm" data-rebook="${esc(S.lastVisit.service_name)}" style="justify-self:start;margin-top:6px">Reservar lo mismo</button></div>` : ''}
       <div class="step-t">Próximos turnos</div>${ACC.upcoming.length ? ACC.upcoming.map((b) => card(b)).join('') : '<p class="empty-slots">No tenés turnos por delante.</p>'}
-      <button class="btn solid sm" data-book style="margin-top:10px">Reservar un turno</button>
       ${ACC.giftcards.length ? `<div class="step-t" style="margin-top:26px">Gift cards</div>${ACC.giftcards.map((g) => `<div class="kv" style="border-top:0"><div style="align-items:center"><dt><b style="font-weight:500;color:var(--tinta)">${esc(g.service_name || fmt(g.amount))}</b> · ${esc(g.status_label)}<br>${esc(g.code || '')}${g.status === 'active' ? ` · saldo ${fmt(g.balance)}` : ''}</dt><dd><button class="btn sm" data-show-gift="${esc(g.token)}">Ver</button></dd></div></div>`).join('')}` : ''}
       ${ACC.past.length ? `<div class="step-t" style="margin-top:26px">Historial</div>${ACC.past.map((b) => card(b, true)).join('')}` : ''}
       <div class="step-t" style="margin-top:26px">Mis datos</div>
-      <form class="bk" id="profileForm" novalidate><div class="row2"><div class="fl"><label for="p_name">Nombre</label><input id="p_name" name="name" value="${esc(c.name)}"></div><div class="fl"><label for="p_phone">Celular</label><input id="p_phone" name="phone" value="${esc(c.phone)}"></div></div>
+      <form class="bk" id="profileForm" novalidate><div class="row2"><div class="fl"><label for="p_name">Nombre y apellido</label><input id="p_name" name="name" value="${esc(c.name)}" autocomplete="name"></div><div class="fl"><label for="p_phone">Celular</label><input id="p_phone" name="phone" value="${esc(c.phone)}" autocomplete="tel"></div></div>
+        <div class="row2"><div class="fl"><label for="p_bd">Cumpleaños</label><input id="p_bd" name="birthday" type="date" value="${esc(c.birthday || '')}"></div><div class="fl"><label for="p_addr">Dónde vivís</label><input id="p_addr" name="address" value="${esc(c.address || '')}" placeholder="Barrio o localidad" autocomplete="address-level2"></div></div>
         <div class="row2"><div class="fl"><label for="p_cur">Contraseña actual</label><input id="p_cur" name="current" type="password" autocomplete="current-password" placeholder="Solo si la querés cambiar"></div><div class="fl"><label for="p_new">Contraseña nueva</label><input id="p_new" name="password" type="password" autocomplete="new-password"></div></div>
         ${acc.error ? `<p class="form-err" role="alert">${esc(acc.error)}</p>` : ''}<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn sm" type="submit">Guardar mis datos</button><button class="btn sm" type="button" data-logout>Salir</button></div></form>`;
   }
   $('#drawer').innerHTML = `${head(ACC ? 'Mi cuenta' : acc.staff ? 'Panel' : { register: 'Crear cuenta', forgot: 'Recuperar contraseña', reset: 'Contraseña nueva' }[acc.mode] || 'Ingresar')}<div class="dbody">${body}</div>`;
+}
+/** Alguien del equipo (web master, administración, recepción o asesora) entró: se abre el panel. */
+function goPanel(staff) {
+  acc.staff = staff; ACC = null;
+  toast(`Hola, ${(staff.name || staff.email).split(' ')[0]}`);
+  if (window.__CASA_OPEN_ADMIN) { closeAll(); window.__CASA_OPEN_ADMIN(); } else location.href = '/admin/';
 }
 async function accountSubmit(form) {
   const d = Object.fromEntries(new FormData(form));
@@ -798,7 +806,8 @@ async function accountSubmit(form) {
   try {
     if (form.id === 'loginForm') {
       const r = await api('/api/account/login', d);
-      if (r.staff) { acc.staff = r.staff; ACC = null; } else { ACC = r; acc.staff = null; toast(`Hola, ${r.customer.name.split(' ')[0]}`); }
+      if (r.staff) { acc.sending = false; return goPanel(r.staff); }
+      ACC = r; acc.staff = null; toast(`Hola, ${r.customer.name.split(' ')[0]}`);
     } else if (form.id === 'registerForm') { ACC = await api('/api/account/register', d); toast('Cuenta creada'); }
     else if (form.id === 'profileForm') { ACC = await api('/api/account/me', d, 'PATCH'); toast('Datos guardados'); }
     else if (form.id === 'forgotForm') { await api('/api/account/forgot', d); acc.sent = d.email; }
@@ -806,7 +815,8 @@ async function accountSubmit(form) {
       if (d.password !== d.password2) throw Object.assign(new Error('Las contraseñas no coinciden.'), { data: { errors: { password2: 'Las contraseñas no coinciden.' } } });
       const r = await api('/api/account/reset', { token: acc.resetToken, password: d.password });
       setHash('#cuenta'); acc.mode = 'login';
-      if (r.staff) { acc.staff = r.staff; ACC = null; toast('Contraseña cambiada'); } else { ACC = r; toast('Contraseña cambiada'); }
+      if (r.staff) { acc.sending = false; toast('Contraseña cambiada'); return goPanel(r.staff); }
+      ACC = r; toast('Contraseña cambiada');
     }
   } catch (err) { acc.errors = err.data?.errors || {}; acc.error = Object.keys(acc.errors).length ? '' : err.message; }
   acc.sending = false; renderAccount();

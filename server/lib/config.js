@@ -15,6 +15,7 @@ export const config = {
   sessionSecret: env('SESSION_SECRET') || null,
   adminEmail: env('ADMIN_EMAIL'),
   adminPassword: env('ADMIN_PASSWORD'),
+  webmasterPassword: env('WEBMASTER_PASSWORD'),
   mp: { accessToken: env('MP_ACCESS_TOKEN'), webhookSecret: env('MP_WEBHOOK_SECRET') },
   mail: { smtpUrl: env('SMTP_URL'), from: env('MAIL_FROM', 'Casa Samadhi <hola@casasamadhi.com.ar>') },
 };

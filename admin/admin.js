@@ -5,7 +5,7 @@ const ROOT = EMBED?.root || document;
 const $ = (s, el = ROOT) => el.querySelector(s);
 const $$ = (s, el = ROOT) => [...el.querySelectorAll(s)];
 let ME = { role: 'admin' };
-const isAdmin = () => ME.role === 'admin';
+const isAdmin = () => ME.role === 'admin' || ME.role === 'webmaster'; // web master: los mismos permisos que administración
 const isPro = () => ME.role === 'pro';
 let embedHash = 'agenda';
 const currentHash = () => (EMBED ? embedHash : location.hash.slice(1));
@@ -57,15 +57,22 @@ $('#logout').addEventListener('click', async () => { if (EMBED) return EMBED.exi
 ROOT.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#"]'); if (a && EMBED) { e.preventDefault(); navTo(a.getAttribute('href').slice(1)); } });
 
 // ── Navegación ───────────────────────────────────────────
-const SECTIONS = [['agenda', 'Agenda'], ['resumen', 'Resumen'], ['turnos', 'Turnos'], ['clientas', 'Clientas'], ['servicios', 'Servicios'], ['profesionales', 'Profesionales'], ['horarios', 'Horarios y bloqueos'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos'], ['contenido', 'Textos de la web'], ['emails', 'Emails'], ['arrepentimientos', 'Arrepentimientos'], ['configuracion', 'Configuración'], ['usuarios', 'Usuarios'], ['historial', 'Historial de cambios']];
-const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'profesionales', 'profesional', 'historial']);
-// Lo que ve una profesional: solo sus turnos, sus servicios, sus comisiones y lo que hizo.
-const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['turnos', 'Mis turnos'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
-const PRO_ALLOWED = new Set([...PRO_SECTIONS.map(([k]) => k), 'turno']);
+// El menú de la izquierda, en tres secciones: Turnos, CRM y Administración.
+const NAV_GROUPS = [
+  ['Turnos', [['agenda', 'Agenda'], ['turnos', 'Turnos'], ['horarios', 'Horarios y bloqueos'], ['servicios', 'Servicios'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos']]],
+  ['CRM', [['clientas', 'Clientas'], ['emails', 'Emails'], ['arrepentimientos', 'Arrepentimientos']]],
+  ['Administración', [['resumen', 'Resumen'], ['caja', 'Caja y facturación'], ['asesoras', 'Asesoras de belleza'], ['usuarios', 'Usuarios'], ['contenido', 'Textos de la web'], ['configuracion', 'Configuración'], ['historial', 'Historial de cambios']]],
+];
+const SECTIONS = NAV_GROUPS.flatMap(([, l]) => l);
+const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'asesoras', 'asesora', 'historial']);
+// Lo que ve una asesora: solo sus turnos, sus servicios, sus comisiones y lo que hizo.
+const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['turnos', 'Mis turnos'], ['clientas', 'Mis clientas'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
+const PRO_ALLOWED = new Set([...PRO_SECTIONS.map(([k]) => k), 'turno', 'clienta']);
 let attention = 0;
 function renderNav(active) {
-  const list = isPro() ? PRO_SECTIONS : SECTIONS.filter(([k]) => isAdmin() || !ADMIN_ONLY.has(k));
-  $('#nav').innerHTML = list.map(([k, l]) => `<button data-nav="${k}" ${k === active ? 'aria-current="page"' : ''}>${l}${k === 'resumen' && attention ? `<span class="count">${attention}</span>` : ''}</button>`).join('');
+  const btn = ([k, l]) => `<button data-nav="${k}" ${k === active ? 'aria-current="page"' : ''}>${l}${k === 'resumen' && attention ? `<span class="count">${attention}</span>` : ''}</button>`;
+  if (isPro()) { $('#nav').innerHTML = PRO_SECTIONS.map(btn).join(''); return; }
+  $('#nav').innerHTML = NAV_GROUPS.map(([g, l]) => { const items = l.filter(([k]) => isAdmin() || !ADMIN_ONLY.has(k)); return items.length ? `<div class="nav-group">${esc(g)}</div>${items.map(btn).join('')}` : ''; }).join('');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) navTo(b.dataset.nav); });
 if (!EMBED) window.addEventListener('hashchange', route);
@@ -73,11 +80,11 @@ function route() {
   let [sec = isPro() ? 'inicio' : 'agenda', id] = currentHash().split('/');
   if (isPro() && !PRO_ALLOWED.has(sec)) sec = 'inicio';
   if (ADMIN_ONLY.has(sec) && !isAdmin()) sec = 'agenda';
-  renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas', profesional: 'profesionales' }[sec] || sec);
+  renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas', asesora: 'asesoras' }[sec] || sec);
   const view = $('#view');
   view.innerHTML = '<p class="muted">Cargando…</p>';
   const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers,
-    profesionales: viewPros, profesional: () => viewPro(id), historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
+    asesoras: viewPros, asesora: () => viewPro(id), caja: () => viewCash(id), historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
   Promise.resolve(fn()).catch((err) => { view.innerHTML = `<div class="notice">${esc(err.message)}</div>`; });
   view.focus({ preventScroll: true });
   if (EMBED) EMBED.scrollTop?.(); else window.scrollTo(0, 0);
@@ -104,7 +111,7 @@ async function viewAgenda(date) {
   const resources = cols.length ? cols : a.resources.slice(0, 1);
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>${isPro() ? 'Mi agenda' : 'Agenda'}</h1><div class="sub">${active.length} turno${active.length === 1 ? '' : 's'} · ${a.hours.length ? a.hours.map((w) => `${w.from} a ${w.to}`).join(' y ') : 'cerrado'}</div></div>
-      <div class="actions">${isPro() ? '' : `${a.pros?.length ? `<select id="agPro" aria-label="Profesional"><option value="">Todas las profesionales</option>${a.pros.map((p) => `<option value="${p.id}" ${String(p.id) === agendaPro ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>` : ''}<button class="btn primary" id="newBk">Cargar turno</button>`}</div></div>
+      <div class="actions">${isPro() ? '' : `${a.pros?.length ? `<select id="agPro" aria-label="Asesora"><option value="">Todas las asesoras</option>${a.pros.map((p) => `<option value="${p.id}" ${String(p.id) === agendaPro ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>` : ''}<button class="btn primary" id="newBk">Cargar turno</button>`}</div></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-d="${addDay(date, -1)}">← Anterior</button><button class="btn sm" data-d="${todayKey()}">Hoy</button><button class="btn sm" data-d="${addDay(date, 1)}">Siguiente →</button><input type="date" id="agDate" value="${date}"><span class="t">${esc(capF(longDay(date)))}</span></div>
     <div id="bkForm"></div>
     <div class="agenda" style="--cols:${resources.length};--h:${y(to)}px;--hour:${60 * PX}px">
@@ -118,7 +125,7 @@ async function viewAgenda(date) {
           ${bks.map((b, i) => { const s = toMin(b.start.slice(11)); const same = bks.filter((x, j) => j < i && toMin(x.start.slice(11)) < s + b.duration && s < toMin(x.start.slice(11)) + x.duration).length; return `<a class="ev s-${b.status}" href="#turno/${b.id}" style="top:${y(s)}px;height:${Math.max(26, b.duration * PX - 2)}px;${same ? `left:${4 + same * 18}px` : ''}"><b>${b.start.slice(11)} · ${esc(b.name)}</b>${esc(b.service_name)}${b.pro_name && !isPro() ? ` · ${esc(b.pro_name)}` : ''}${b.status !== 'confirmed' ? ` · ${esc(STATUS[b.status])}` : ''}</a>`; }).join('')}</div>`;
       }).join('')}
     </div>
-    ${a.bookings.length ? `<div class="card" style="margin-top:14px"><h2>Lista del día</h2><div class="tablewrap"><table><tr><th>Hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Profesional</th>'}<th>Estado</th><th class="r">${isPro() ? 'Tu comisión' : 'Resta cobrar'}</th></tr>
+    ${a.bookings.length ? `<div class="card" style="margin-top:14px"><h2>Lista del día</h2><div class="tablewrap"><table><tr><th>Hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Asesora</th>'}<th>Estado</th><th class="r">${isPro() ? 'Tu comisión' : 'Resta cobrar'}</th></tr>
       ${a.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${b.start.slice(11)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}</td>${isPro() ? '' : `<td>${esc(b.pro_name || '—')}</td>`}<td>${pill(b.status)}</td><td class="r n">${isPro() ? (b.status === 'cancelled' ? '—' : fmt(b.commission)) : b.price ? fmt(Math.max(0, b.price - b.deposit_paid - b.gift_applied)) : '—'}</td></tr>`).join('')}</table></div></div>` : ''}`;
   $$('[data-d]').forEach((b) => (b.onclick = () => navTo('agenda/' + b.dataset.d)));
   $('#agDate').onchange = (e) => e.target.value && navTo('agenda/' + e.target.value);
@@ -129,7 +136,7 @@ async function viewAgenda(date) {
 function manualBooking(box, date, svcs) {
   box.innerHTML = `<div class="card form" style="margin-bottom:14px"><h2>Cargar turno (WhatsApp, teléfono o en la casa)</h2>
     <div class="row"><label class="fl"><span>Servicio</span><select id="mSvc">${svcs.filter((s) => s.duration > 0).map((s) => `<option value="${s.id}">${esc(s.name)}${s.tag && s.category === 'manicuria' ? ` · ${esc(s.tag)}` : ''} (${s.duration} min)</option>`).join('')}</select></label>
-      <label class="fl"><span>Profesional</span><select id="mPro"><option value="">La que esté libre</option></select></label></div>
+      <label class="fl"><span>Asesora</span><select id="mPro"><option value="">La que esté libre</option></select></label></div>
     <div class="row"><label class="fl"><span>Día</span><input type="date" id="mDate" value="${date}"></label><label class="fl"><span>Hora</span><select id="mTime"></select></label></div>
     <div class="row"><label class="fl"><span>Nombre</span><input id="mName"></label><label class="fl"><span>Teléfono</span><input id="mPhone" inputmode="tel"></label><label class="fl"><span>Email (opcional)</span><input id="mEmail" type="email"></label></div>
     <div class="row"><label class="fl"><span>Seña recibida ($)</span><input id="mDep" type="number" min="0" value="0"></label><label class="fl"><span>Cómo pagó la seña</span><select id="mPay"><option value="local">En la casa (efectivo o posnet)</option><option value="transfer">Transferencia</option><option value="mp">Mercado Pago</option></select></label><label class="fl"><span>Notas</span><input id="mNotes"></label></div>
@@ -142,7 +149,7 @@ function manualBooking(box, date, svcs) {
     const r = await api(`/slots?service=${$('#mSvc').value}&date=${$('#mDate').value}&pro=${$('#mPro').value}`);
     if (lastSvc !== $('#mSvc').value) {
       lastSvc = $('#mSvc').value;
-      $('#mPro').innerHTML = `<option value="">${r.pros.length ? 'La que esté libre' : 'Sin profesional asignada'}</option>${r.pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}`;
+      $('#mPro').innerHTML = `<option value="">${r.pros.length ? 'La que esté libre' : 'Sin asesora asignada'}</option>${r.pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}`;
     }
     $('#mTime').innerHTML = r.slots.length ? r.slots.map((t) => `<option>${t}</option>`).join('') : '<option value="">Sin horarios libres</option>';
     if (!r.slots.length) $('#mTime').insertAdjacentHTML('beforeend', Array.from({ length: 24 }, (_, i) => `<option>${String(8 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}</option>`).join(''));
@@ -156,6 +163,65 @@ function manualBooking(box, date, svcs) {
       toast(`Turno ${r.booking.code} cargado${r.booking.pro_name ? ` con ${r.booking.pro_name}` : ''}`); navTo('agenda/' + $('#mDate').value);
     } catch (e) { $('#mErr').textContent = e.message; }
   };
+}
+
+// ── Caja y facturación ───────────────────────────────────
+const METHOD_OPTS = (sel = 'efectivo') => Object.entries({ efectivo: 'Efectivo', transferencia: 'Transferencia', mercadopago: 'Mercado Pago', debito: 'Débito', credito: 'Crédito' }).map(([k, l]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${l}</option>`).join('');
+async function viewCash(date) {
+  const r = await api('/cash' + (date ? '?date=' + date : ''));
+  const d = r.date, closed = r.closing, isToday = d === r.today;
+  const kpi = (l, v, sub = '', cls = '') => `<div class="card kpi ${cls}"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
+  const signed = (m) => `${m.type === 'out' ? '− ' : ''}${fmt(m.amount)}`;
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Caja y facturación</h1><div class="sub">${esc(capF(longDay(d)))}${closed ? ' · <span class="pill s-completed">Caja cerrada</span>' : isToday ? ' · <span class="pill s-confirmed">Caja abierta</span>' : ''}</div></div>
+      <div class="actions daynav"><button class="btn sm" data-cd="${addDay(d, -1)}">← Día anterior</button><button class="btn sm" data-cd="${r.today}">Hoy</button><button class="btn sm" data-cd="${addDay(d, 1)}" ${d >= r.today ? 'disabled' : ''}>Día siguiente →</button><input type="date" id="cDate" value="${d}" max="${r.today}"></div></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      ${kpi('Facturación del día', fmt(r.income), `${r.moves.filter((m) => m.type === 'in').length} ingresos`, 'accent')}
+      ${kpi('Egresos', fmt(r.expenses), r.expenses ? `${r.moves.filter((m) => m.type === 'out').length} movimientos` : '')}
+      ${kpi('Neto', fmt(r.net))}
+      ${kpi('Efectivo en caja', fmt(closed ? closed.counted : r.cash.expected), closed ? `contado al cierre · quedó ${fmt(closed.leaves)}` : `fondo ${fmt(r.cash.opening)} + ${fmt(r.cash.in)} − ${fmt(r.cash.out)}`)}
+    </div>
+    <div class="card" style="margin-bottom:14px"><h2>Por medio de pago</h2><div class="tablewrap"><table><tr><th>Medio</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Neto</th></tr>
+      ${Object.entries(r.byMethod).map(([k, v]) => `<tr><td>${esc(r.methods[k] || k)}</td><td class="r n">${v.in ? fmt(v.in) : '—'}</td><td class="r n">${v.out ? fmt(v.out) : '—'}</td><td class="r n"><b>${fmt(v.in - v.out)}</b></td></tr>`).join('')}
+      <tr><td><b>Total</b></td><td class="r n"><b>${fmt(r.income)}</b></td><td class="r n"><b>${fmt(r.expenses)}</b></td><td class="r n"><b>${fmt(r.net)}</b></td></tr></table></div></div>
+    <div class="grid g2">
+      <div class="grid" style="align-content:start">
+        ${r.pending.length ? `<div class="card form"><h2>Saldos por cobrar</h2><p class="small muted">Turnos del día con saldo pendiente. Al cobrar queda en la caja y en el turno.</p><table>${r.pending.map((b) => `<tr><td class="n">${b.time}</td><td><a href="#turno/${b.id}">${esc(b.name)}</a><div class="small muted">${esc(b.service_name)}${b.pro_name ? ` · ${esc(b.pro_name)}` : ''}</div></td><td class="r n"><b>${fmt(b.rest)}</b></td><td class="r">${closed ? '' : `<select data-pm="${b.id}">${METHOD_OPTS()}</select> <button class="btn sm primary" data-collect="${b.id}" data-amt="${b.rest}">Cobrar</button>`}</td></tr>`).join('')}</table></div>` : ''}
+        ${closed ? '' : `<div class="card form"><h2>Cargar movimiento</h2>
+          <div class="row"><label class="fl"><span>Tipo</span><select id="mvType"><option value="in">Ingreso</option><option value="out">Egreso</option></select></label><label class="fl"><span>Medio</span><select id="mvMethod">${METHOD_OPTS()}</select></label><label class="fl"><span>Monto ($)</span><input id="mvAmt" type="number" min="0" inputmode="numeric"></label></div>
+          <label class="fl"><span>Concepto</span><input id="mvConcept" placeholder="Ej.: venta de esmaltes, compra de insumos, fondo inicial, retiro"></label>
+          <p class="err" id="mvErr"></p><div class="actions"><button class="btn primary" id="mvAdd">Cargar</button></div></div>`}
+        ${closed ? `<div class="card form"><h2>Cierre de caja</h2><dl class="kv"><dt>Fondo inicial</dt><dd>${fmt(closed.opening)}</dd><dt>Entró en efectivo</dt><dd>${fmt(closed.cash_in)}</dd><dt>Salió en efectivo</dt><dd>${fmt(closed.cash_out)}</dd><dt>Esperado</dt><dd>${fmt(closed.expected)}</dd><dt>Contado</dt><dd><b>${fmt(closed.counted)}</b></dd><dt>Diferencia</dt><dd class="${closed.diff ? 'warn' : ''}">${closed.diff ? `${closed.diff > 0 ? 'Sobran' : 'Faltan'} ${fmt(Math.abs(closed.diff))}` : 'Sin diferencia'}</dd><dt>Retirado</dt><dd>${fmt(closed.withdrawn)}</dd><dt>Queda para mañana</dt><dd>${fmt(closed.leaves)}</dd>${closed.notes ? `<dt>Notas</dt><dd>${esc(closed.notes)}</dd>` : ''}<dt>Cerró</dt><dd>${esc(closed.by)} · ${at(closed.at)}</dd></dl>
+          ${isAdmin() ? '<div class="actions"><button class="btn" id="cReopen">Reabrir caja</button></div>' : ''}</div>`
+        : d <= r.today ? `<div class="card form"><h2>Cierre de caja</h2><p class="small muted">Contá el efectivo que hay en la caja. Lo que no retires queda como fondo para el día siguiente.</p>
+          <dl class="kv"><dt>Fondo inicial</dt><dd>${fmt(r.cash.opening)}</dd><dt>Entró en efectivo</dt><dd>${fmt(r.cash.in)}</dd><dt>Salió en efectivo</dt><dd>${fmt(r.cash.out)}</dd><dt>Debería haber</dt><dd><b>${fmt(r.cash.expected)}</b></dd></dl>
+          <div class="row"><label class="fl"><span>Efectivo contado ($)</span><input id="clCount" type="number" min="0" inputmode="numeric"></label><label class="fl"><span>Retiro ($)</span><input id="clOut" type="number" min="0" value="0" inputmode="numeric"></label></div>
+          <label class="fl"><span>Notas (opcional)</span><input id="clNotes" placeholder="Ej.: faltan $500 de cambio"></label>
+          <p class="small" id="clDiff"></p><p class="err" id="clErr"></p><div class="actions"><button class="btn primary" id="clGo">Cerrar caja</button></div></div>` : ''}
+      </div>
+      <div class="grid" style="align-content:start">
+        <div class="card"><h2>Movimientos del día</h2>${r.moves.length ? `<div class="tablewrap"><table>${r.moves.map((m) => `<tr><td class="n">${esc((m.at ? new Date(m.at) : new Date()).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }))}</td><td>${esc(m.concept)}<div class="small muted">${esc(m.method_label)}${m.auto ? ' · online' : m.by ? ` · ${esc(m.by)}` : ''}</div></td><td class="r n ${m.type === 'out' ? 'warn' : ''}">${signed(m)}</td><td class="r">${!m.auto && !closed ? `<button class="btn sm" data-mvdel="${m.id}" title="Borrar">✕</button>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="muted">Todavía no hay movimientos este día.</p>'}</div>
+        <div class="card"><h2>Facturación diaria</h2><div class="tablewrap"><table><tr><th>Día</th><th class="r">Ingresos</th><th class="r">Egresos</th><th class="r">Neto</th><th></th></tr>
+          ${r.billing.map((x) => `<tr class="click" data-cd="${x.date}"><td class="n">${dateOnly(x.date)}</td><td class="r n">${x.income ? fmt(x.income) : '—'}</td><td class="r n">${x.expenses ? fmt(x.expenses) : '—'}</td><td class="r n"><b>${fmt(x.net)}</b></td><td>${x.closed ? '<span class="pill s-completed">Cerrada</span>' : ''}</td></tr>`).join('')}
+          <tr><td><b>14 días</b></td><td class="r n"><b>${fmt(r.billing.reduce((a, x) => a + x.income, 0))}</b></td><td class="r n"><b>${fmt(r.billing.reduce((a, x) => a + x.expenses, 0))}</b></td><td class="r n"><b>${fmt(r.billing.reduce((a, x) => a + x.net, 0))}</b></td><td></td></tr></table></div></div>
+      </div>
+    </div>`;
+  const go = (x) => navTo('caja/' + x);
+  $$('[data-cd]').forEach((b) => (b.onclick = () => !b.disabled && go(b.dataset.cd)));
+  $('#cDate').onchange = (e) => e.target.value && go(e.target.value);
+  const reload = () => viewCash(d);
+  $('#mvAdd')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; $('#mvErr').textContent = '';
+    try { await api('/cash/moves', { method: 'POST', body: { date: d, type: $('#mvType').value, method: $('#mvMethod').value, amount: $('#mvAmt').value, concept: $('#mvConcept').value } }); toast('Movimiento cargado'); reload(); }
+    catch (err) { $('#mvErr').textContent = err.message; e.target.disabled = false; }
+  });
+  $$('[data-collect]').forEach((b) => (b.onclick = async () => { b.disabled = true; try { await api('/cash/moves', { method: 'POST', body: { date: d, type: 'in', method: $(`[data-pm="${b.dataset.collect}"]`).value, amount: b.dataset.amt, booking_id: b.dataset.collect } }); toast('Cobro registrado'); reload(); } catch (err) { toast(err.message, true); b.disabled = false; } }));
+  $$('[data-mvdel]').forEach((b) => (b.onclick = (e) => confirmInline(e.target, '¿Borrar el movimiento?', async () => { try { await api('/cash/moves/' + b.dataset.mvdel, { method: 'DELETE' }); reload(); } catch (err) { toast(err.message, true); } }, 'Borrar')));
+  const diff = () => { const v = $('#clCount')?.value; if (v === '' || v === undefined) { $('#clDiff').textContent = ''; return; } const df = Number(v) - r.cash.expected; $('#clDiff').textContent = df ? `${df > 0 ? 'Sobran' : 'Faltan'} ${fmt(Math.abs(df))} · quedan ${fmt(Number(v) - (Number($('#clOut').value) || 0))} para mañana` : `Sin diferencia · quedan ${fmt(Number(v) - (Number($('#clOut').value) || 0))} para mañana`; };
+  $('#clCount')?.addEventListener('input', diff); $('#clOut')?.addEventListener('input', diff);
+  $('#clGo')?.addEventListener('click', (e) => confirmInline(e.target, '¿Cerrar la caja de este día?', async () => {
+    try { await api('/cash/close', { method: 'POST', body: { date: d, counted: $('#clCount').value, withdrawn: $('#clOut').value, notes: $('#clNotes').value } }); toast('Caja cerrada'); reload(); } catch (err) { $('#clErr').textContent = err.message; }
+  }, 'Cerrar caja'));
+  $('#cReopen')?.addEventListener('click', (e) => confirmInline(e.target, '¿Reabrir la caja de este día?', async () => { try { await api('/cash/reopen', { method: 'POST', body: { date: d } }); toast('Caja reabierta'); reload(); } catch (err) { toast(err.message, true); } }, 'Reabrir'));
 }
 
 // ── Resumen ──────────────────────────────────────────────
@@ -187,13 +253,13 @@ async function viewBookings() {
   const pros = isPro() ? [] : await prosList();
   $('#view').innerHTML = `<div class="page-head"><div><h1>${isPro() ? 'Mis turnos' : 'Turnos'}</h1></div></div>
     <div class="toolbar"><input id="bq" placeholder="Buscar por nombre${isPro() ? '' : ', email, teléfono'} o código"><select id="bs"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
-      ${pros.length ? `<select id="bp"><option value="">Todas las profesionales</option>${pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+      ${pros.length ? `<select id="bp"><option value="">Todas las asesoras</option>${pros.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>` : ''}
       <select id="bw"><option value="next">Próximos</option><option value="past">Anteriores</option><option value="all">Todos</option></select></div><div id="blist"><p class="muted">Cargando…</p></div>`;
   const load = async () => {
     const w = $('#bw').value, t = todayKey();
     const qs = new URLSearchParams({ q: $('#bq').value, status: $('#bs').value, pro: $('#bp')?.value || '', ...(w === 'next' ? { from: t, order: 'asc' } : w === 'past' ? { to: addDay(t, -1) } : {}) });
     const r = await api('/bookings?' + qs);
-    $('#blist').innerHTML = r.bookings.length ? `<div class="card tablewrap"><table><tr><th>Código</th><th>Día y hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Profesional</th>'}<th>Estado</th>${isPro() ? '<th class="r">Precio</th><th class="r">Tu comisión</th>' : '<th class="r">Precio</th><th class="r">Seña</th>'}</tr>
+    $('#blist').innerHTML = r.bookings.length ? `<div class="card tablewrap"><table><tr><th>Código</th><th>Día y hora</th><th>Clienta</th><th>Servicio</th>${isPro() ? '' : '<th>Asesora</th>'}<th>Estado</th>${isPro() ? '<th class="r">Precio</th><th class="r">Tu comisión</th>' : '<th class="r">Precio</th><th class="r">Seña</th>'}</tr>
       ${r.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td>${esc(b.code)}</td><td class="n">${shortWhen(b.start)}</td><td>${esc(b.name)}<div class="small muted">${esc(b.phone)}</div></td><td>${esc(b.service_name)}${b.group ? ' <span class="pill" title="Reservado junto con otro servicio">+</span>' : ''}</td>${isPro() ? '' : `<td>${esc(b.pro_name || '—')}</td>`}<td>${pill(b.status)}${b.refund_pending ? ' <span class="pill s-attention">Devolver seña</span>' : ''}</td>
         ${isPro() ? `<td class="r n">${b.price ? fmt(b.price) : '—'}</td><td class="r n">${['cancelled', 'no_show'].includes(b.status) ? '—' : fmt(b.commission)}</td>` : `<td class="r n">${b.price ? fmt(b.price) : '—'}</td><td class="r n">${b.deposit_paid ? fmt(b.deposit_paid) : '—'}${b.pay_method_label && b.deposit_paid ? `<div class="small muted">${esc(b.pay_method_label)}</div>` : ''}</td>`}</tr>`).join('')}</table></div>` : '<div class="empty card">No hay turnos con ese filtro.</div>';
     $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
@@ -204,7 +270,7 @@ async function viewBookings() {
 }
 const historyList = (b) => `<ul class="history">${b.history.map((h) => `<li><span>${at(h.at)}</span><span>${esc(h.text)}</span></li>`).join('') || '<li class="muted">Sin movimientos.</li>'}</ul>`;
 const auditList = (list) => (list?.length ? `<ul class="history">${list.map((a) => `<li><span>${at(a.at)}</span><span><b>${esc(a.user)}</b>${a.role_label ? ` <span class="muted small">(${esc(a.role_label)})</span>` : ''} · ${esc(a.action)}</span></li>`).join('')}</ul>` : '<p class="muted small">Sin cambios registrados.</p>');
-/** Lo que ve una profesional de un turno suyo: los datos para atenderlo, su comisión y la opción de cancelarlo. */
+/** Lo que ve una asesora de un turno suyo: los datos para atenderlo, su comisión y la opción de cancelarlo. */
 async function viewProBooking(id) {
   const { booking: b, audit } = await api('/bookings/' + id);
   const canCancel = ['confirmed', 'pending_payment', 'pending_transfer', 'attention'].includes(b.status);
@@ -241,7 +307,11 @@ async function viewBooking(id) {
       <p>${esc(b.name)} eligió pagar la seña por transferencia: <b>${fmt(group_due || b.deposit_due)}</b>${group.length > 1 ? ' por toda la reserva' : ''}.${b.transfer_notified ? ` <b>Avisó que ya transfirió</b> (${at(b.transfer_notified)}).` : ' Todavía no avisó que transfirió.'} ${b.status === 'expired' ? 'El plazo venció: si la plata llegó igual, confirmala y se revisa si el horario sigue libre.' : `El turno queda guardado hasta el ${at(b.hold_until)}`}</p>
       <div class="row"><label class="fl"><span>Monto recibido ($)</span><input id="tAmt" type="number" min="0" value="${group_due || b.deposit_due}"></label></div>
       <div class="actions"><button class="btn primary" id="tOk">Llegó la transferencia: confirmar</button><button class="btn danger" id="tNo">No llegó: cancelar</button></div>
-      <p class="small muted">Al confirmar, a la clienta le llega el email de turno confirmado y a la profesional, el aviso de su turno.</p></div>` : ''}
+      <p class="small muted">Al confirmar, a la clienta le llega el email de turno confirmado y a la asesora, el aviso de su turno.</p></div>` : ''}
+    ${rest > (b.collected || 0) && ['confirmed', 'completed', 'attention'].includes(b.status) && !isPro() ? `<div class="card form" style="margin-bottom:14px"><h2>Cobrar en la casa</h2>
+      <p class="small muted">Resta cobrar <b>${fmt(rest - (b.collected || 0))}</b>${b.collected ? ` (ya se cobraron ${fmt(b.collected)})` : ''}. Queda registrado en la caja del día.</p>
+      <div class="row"><label class="fl"><span>Monto ($)</span><input id="coAmt" type="number" min="0" value="${rest - (b.collected || 0)}"></label><label class="fl"><span>Medio</span><select id="coMethod">${METHOD_OPTS()}</select></label></div>
+      <div class="actions"><button class="btn primary" id="coGo">Registrar cobro</button><a class="btn" href="#caja">Ver la caja</a></div></div>` : ''}
     <div class="grid g2">
       <div class="card form"><h2>${esc(b.service_name)}</h2>
         ${group.length > 1 ? `<p class="small muted">Reservado junto con: ${group.filter((x) => x.id !== b.id).map((x) => `<a href="#turno/${x.id}">${esc(x.code)} · ${esc(x.service_name)} ${x.start.slice(11)} h</a>`).join(' · ')}</p>` : ''}
@@ -249,12 +319,12 @@ async function viewBooking(id) {
           <dt>Precio</dt><dd>${b.price ? fmt(b.price) : '—'}</dd>${b.gift_applied ? `<dt>Gift card</dt><dd>− ${fmt(b.gift_applied)} (${esc(b.gift_code)})</dd>` : ''}<dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}${b.pay_method_label && b.pay_method !== 'none' ? ` · ${esc(b.pay_method_label)}` : ''}${b.payment_id ? ` <span class="small muted">· pago ${esc(b.payment_id)}</span>` : ''}</dd>
           <dt>Resta cobrar en la casa</dt><dd><b>${fmt(rest)}</b></dd>
           ${b.pro_id ? `<dt>Comisión</dt><dd>${fmt(b.commission)} para ${esc(b.pro_name)} (${b.commission_percent ?? b.commission_percent_now}%${b.commission_percent != null ? ', fijada al realizarse' : ''})</dd>` : ''}</dl>
-        <div class="row"><label class="fl"><span>Profesional</span><select id="bPro"><option value="">Sin asignar</option>${pros.map((p) => `<option value="${p.id}" ${p.id === b.pro_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+        <div class="row"><label class="fl"><span>Asesora</span><select id="bPro"><option value="">Sin asignar</option>${pros.map((p) => `<option value="${p.id}" ${p.id === b.pro_id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
           <label class="fl"><span>Estado</span><select id="bStatus">${Object.entries(STATUS).map(([k, l]) => `<option value="${k}" ${k === b.status ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
         <label class="fl"><span>Notas internas</span><input id="bNotes" value="${esc(b.notes)}"></label>
         <label class="fl" id="bReasonWrap" hidden><span>Motivo de la cancelación (queda registrado)</span><input id="bReason"></label>
         ${b.refund_pending ? '<label class="check"><input type="checkbox" id="bRefund" checked> La seña todavía no se devolvió ni se pasó a otro turno</label>' : ''}
-        <label class="check"><input type="checkbox" id="bForce"> Asignar igual aunque la profesional tenga otro turno a esa hora</label>
+        <label class="check"><input type="checkbox" id="bForce"> Asignar igual aunque la asesora tenga otro turno a esa hora</label>
         <p class="err" id="bErr"></p>
         <div class="actions"><button class="btn primary" id="bSave">Guardar</button></div>
         <h2 style="margin-top:8px">Reprogramar</h2>
@@ -284,6 +354,7 @@ async function viewBooking(id) {
     $('#rErr').textContent = '';
     try { await api('/bookings/' + b.id, { method: 'PATCH', body: { date: $('#rDate').value, time: $('#rTime').value, notify: $('#rNotify').checked, force: $('#rForce').checked } }); toast('Turno reprogramado'); viewBooking(b.id); } catch (e) { $('#rErr').textContent = e.message; }
   };
+  $('#coGo')?.addEventListener('click', async (e) => { e.target.disabled = true; try { await api('/cash/moves', { method: 'POST', body: { type: 'in', method: $('#coMethod').value, amount: $('#coAmt').value, booking_id: b.id } }); toast('Cobro registrado en la caja'); viewBooking(b.id); } catch (err) { toast(err.message, true); e.target.disabled = false; } });
   $('#tOk')?.addEventListener('click', async (e) => { e.target.disabled = true; try { await api('/bookings/' + b.id, { method: 'PATCH', body: { transfer: 'confirm', amount: $('#tAmt').value } }); toast('Transferencia confirmada: le avisamos a la clienta'); viewBooking(b.id); } catch (err) { toast(err.message, true); e.target.disabled = false; } });
   $('#tNo')?.addEventListener('click', (e) => confirmInline(e.target, '¿Cancelar la reserva porque no llegó la transferencia?', async () => { try { await api('/bookings/' + b.id, { method: 'PATCH', body: { transfer: 'reject' } }); toast('Reserva cancelada'); viewBooking(b.id); } catch (err) { toast(err.message, true); } }, 'Sí, cancelar'));
 }
@@ -293,7 +364,11 @@ const cState = { q: '', segment: '', tag: '', sort: 'last' };
 const dateOnly = (s) => { if (!s) return ''; const [y, m, d] = s.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}`; };
 const daysAgo = (s) => { if (!s) return ''; const n = Math.round((Date.now() - Date.parse(s.slice(0, 10) + 'T12:00:00-03:00')) / 864e5); return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : n < 60 ? `hace ${n} días` : `hace ${Math.round(n / 30)} meses`; };
 async function viewClients() {
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Clientas</h1><div class="sub">Todo lo que sabemos de cada clienta: visitas, gasto, tratamientos, preferencias y notas del equipo</div></div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><h1>${isPro() ? 'Mis clientas' : 'Clientas'}</h1><div class="sub">${isPro() ? 'Las clientas que atendiste o vas a atender: su ficha, sus preferencias y sus fotos de antes y después.' : 'Todo lo que sabemos de cada clienta: datos, visitas, gasto, tratamientos, preferencias, fotos de antes y después y notas del equipo.'}</div></div>${isPro() ? '' : '<div class="actions"><button class="btn primary" id="cNew">Nueva clienta</button></div>'}</div>
+    <div class="card form" id="cNewBox" hidden style="margin-bottom:14px"><h2>Nueva clienta</h2>
+      <div class="row"><label class="fl"><span>Nombre y apellido</span><input id="nc_name" autocomplete="off"></label><label class="fl"><span>Celular</span><input id="nc_phone" inputmode="tel"></label><label class="fl"><span>Correo</span><input id="nc_email" type="email"></label></div>
+      <div class="row"><label class="fl"><span>Cumpleaños</span><input id="nc_bd" type="date"></label><label class="fl"><span>Dónde vive</span><input id="nc_addr" placeholder="Barrio o localidad (ej.: Centro, City Bell)"></label></div>
+      <p class="err" id="ncErr"></p><div class="actions"><button class="btn primary" id="ncSave">Guardar clienta</button><button class="btn" id="ncCancel">Cancelar</button></div></div>
     <div class="grid g4" id="csum" style="margin-bottom:14px"></div>
     <div class="toolbar"><input id="cq" placeholder="Buscar por nombre, email, celular o etiqueta" value="${esc(cState.q)}">
       <select id="cseg"><option value="">Todas</option><option value="loyal">Frecuentes (3+ visitas)</option><option value="new">Nuevas (0–1 visita)</option><option value="inactive">Sin venir hace 60+ días</option><option value="birthday">Cumplen este mes</option></select>
@@ -301,13 +376,20 @@ async function viewClients() {
       <select id="csort"><option value="last">Última visita</option><option value="spent">Más gasto</option><option value="visits">Más visitas</option><option value="name">Nombre</option></select></div>
     <div id="clist"><p class="muted">Cargando…</p></div>`;
   $('#cseg').value = cState.segment; $('#csort').value = cState.sort;
+  $('#cNew')?.addEventListener('click', () => { $('#cNewBox').hidden = false; $('#nc_name').focus(); });
+  $('#ncCancel')?.addEventListener('click', () => { $('#cNewBox').hidden = true; });
+  $('#ncSave')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; $('#ncErr').textContent = '';
+    try { const r = await api('/clients', { method: 'POST', body: { name: $('#nc_name').value, phone: $('#nc_phone').value, email: $('#nc_email').value, birthday: $('#nc_bd').value, address: $('#nc_addr').value } }); toast('Clienta guardada'); navTo('clienta/' + encodeURIComponent(r.client.key)); }
+    catch (err) { $('#ncErr').textContent = err.data?.errors ? Object.values(err.data.errors).filter(Boolean).join(' ') : err.message; e.target.disabled = false; }
+  });
   const load = async () => {
     const r = await api('/clients?' + new URLSearchParams(cState));
     const tagSel = $('#ctag'); if (tagSel.options.length === 1) { tagSel.innerHTML += r.tags.map((t) => `<option>${esc(t)}</option>`).join(''); tagSel.value = cState.tag; }
     const S = r.summary;
     $('#csum').innerHTML = `<div class="card kpi accent"><div class="l">Clientas</div><div class="v">${S.total}</div></div><div class="card kpi"><div class="l">Volvieron 2+ veces</div><div class="v">${S.returning}</div></div><div class="card kpi"><div class="l">Con cuenta en la web</div><div class="v">${S.withAccount}</div></div><div class="card kpi"><div class="l">Sin venir hace 60+ días</div><div class="v">${S.inactive}</div></div>`;
-    $('#clist').innerHTML = r.clients.length ? `<div class="card tablewrap"><table><tr><th>Clienta</th><th>Contacto</th><th>Lo que más se hace</th><th class="r">Visitas</th><th class="r">Gastado</th><th>Última visita</th><th>Próximo turno</th></tr>
-      ${r.clients.map((c) => `<tr class="click" data-href="clienta/${encodeURIComponent(c.key)}"><td><b>${esc(c.name)}</b>${c.account ? ' <span class="pill s-active">Con cuenta</span>' : ''}${c.tags.map((t) => ` <span class="pill">${esc(t)}</span>`).join('')}${c.hasNotes ? ' <span class="small muted" title="Tiene notas">✎</span>' : ''}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.spent ? fmt(c.spent) : '—'}</td><td class="n">${c.last ? `${dateOnly(c.last)}<div class="small muted">${daysAgo(c.last)}</div>` : '<span class="muted">—</span>'}</td><td class="n">${c.next ? shortWhen(c.next) : '<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>
+    $('#clist').innerHTML = r.clients.length ? `<div class="card tablewrap"><table><tr><th>Clienta</th><th>Contacto</th><th>Dónde vive</th><th>Lo que más se hace</th><th class="r">Visitas</th><th class="r">Gastado</th><th>Última visita</th><th>Próximo turno</th></tr>
+      ${r.clients.map((c) => `<tr class="click" data-href="clienta/${encodeURIComponent(c.key)}"><td><b>${esc(c.name)}</b>${c.account ? ' <span class="pill s-active">Con cuenta</span>' : ''}${c.tags.map((t) => ` <span class="pill">${esc(t)}</span>`).join('')}${c.hasNotes ? ' <span class="small muted" title="Tiene notas">✎</span>' : ''}${c.photos ? ` <span class="small muted" title="Fotos de antes y después">📷 ${c.photos}</span>` : ''}</td><td>${esc(c.phone)}<div class="small muted">${esc(c.email)}</div></td><td>${esc(c.address || '—')}</td><td>${esc(c.top)}</td><td class="r n">${c.visits}</td><td class="r n">${c.spent ? fmt(c.spent) : '—'}</td><td class="n">${c.last ? `${dateOnly(c.last)}<div class="small muted">${daysAgo(c.last)}</div>` : '<span class="muted">—</span>'}</td><td class="n">${c.next ? shortWhen(c.next) : '<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>
       <p class="small muted" style="margin-top:8px">${r.clients.length} de ${r.total} clientas</p>` : '<div class="empty card">No hay clientas con ese filtro.</div>';
     $$('#clist tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   };
@@ -323,8 +405,8 @@ async function viewClient(key) {
   const phone = String(c.phone || '').replace(/\D/g, '');
   const wa = phone ? `https://wa.me/${phone.startsWith('54') ? phone : '549' + phone}?text=${encodeURIComponent(`Hola ${c.name.split(' ')[0]}! Te escribimos de Casa Samadhi 🌿`)}` : '';
   const stat = (l, v, sub = '') => `<div class="card kpi"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
-  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#clientas">← Clientas</a><h1 style="margin-top:6px">${esc(c.name)}</h1><div class="sub">${c.account ? `Con cuenta en la web desde ${dateOnly(c.account_since)}` : 'Sin cuenta en la web (reservó como invitada)'}${c.first ? ` · Clienta desde ${dateOnly(c.first)}` : ''}</div></div>
-      <div class="actions">${wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}<a class="btn primary" href="#agenda">Nuevo turno</a></div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#clientas">← ${isPro() ? 'Mis clientas' : 'Clientas'}</a><h1 style="margin-top:6px">${esc(c.name)}</h1><div class="sub">${c.account ? `Con cuenta en la web desde ${dateOnly(c.account_since)}` : (c.manual ? 'Cargada en el panel' : 'Sin cuenta en la web (reservó como invitada)')}${c.first ? ` · Clienta desde ${dateOnly(c.first)}` : ''}</div></div>
+      <div class="actions">${wa ? `<a class="btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ''}${isPro() ? '' : '<a class="btn primary" href="#agenda">Nuevo turno</a>'}</div></div>
     <div class="grid g4" style="margin-bottom:14px">
       ${stat('Visitas realizadas', c.visits, c.everyDays ? `vuelve cada ${c.everyDays} días aprox.` : '')}
       ${stat('Gastado en la casa', fmt(c.spent), c.visits ? `ticket promedio ${fmt(c.avgTicket)}` : '')}
@@ -334,25 +416,43 @@ async function viewClient(key) {
     <div class="grid g2">
       <div class="grid" style="align-content:start">
         <div class="card form"><h2>Ficha</h2>
-          <dl class="kv"><dt>Celular</dt><dd>${esc(c.phone || '—')}</dd><dt>Email</dt><dd>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</dd><dt>Le gusta</dt><dd>${d.services.slice(0, 3).map((x) => `${esc(x.name)} (${x.n})`).join(' · ') || '—'}</dd><dt>Cancelaciones</dt><dd>${c.cancelled}${c.noShows ? ` · no vino ${c.noShows} vez${c.noShows === 1 ? '' : 'es'}` : ''}</dd></dl>
-          <label class="fl"><span>Cumpleaños</span><input type="date" id="crmBd" value="${esc(m.birthday)}"></label>
+          ${isPro() ? `<dl class="kv"><dt>Celular</dt><dd>${esc(c.phone || '—')}</dd><dt>Correo</dt><dd>${esc(c.email || '—')}</dd><dt>Cumpleaños</dt><dd>${m.birthday ? dateOnly(m.birthday) : '—'}</dd><dt>Dónde vive</dt><dd>${esc(m.address || '—')}</dd><dt>Preferencias</dt><dd>${esc(m.preferences || '—')}</dd><dt>Notas</dt><dd>${esc(m.notes || '—')}</dd></dl>` : `
+          <div class="row"><label class="fl"><span>Nombre y apellido</span><input id="crmName" value="${esc(m.name || c.name)}"></label></div>
+          <div class="row"><label class="fl"><span>Celular</span><input id="crmPhone" inputmode="tel" value="${esc(m.phone || '')}"></label><label class="fl"><span>Correo</span><input id="crmEmail" type="email" value="${esc(m.email || '')}"></label></div>
+          <div class="row"><label class="fl"><span>Cumpleaños</span><input type="date" id="crmBd" value="${esc(m.birthday)}"></label><label class="fl"><span>Dónde vive</span><input id="crmAddr" value="${esc(m.address || '')}" placeholder="Barrio o localidad"></label></div>
+          <dl class="kv"><dt>Le gusta</dt><dd>${d.services.slice(0, 3).map((x) => `${esc(x.name)} (${x.n})`).join(' · ') || '—'}</dd></dl>
           <div class="fl"><span>Etiquetas</span><div class="chips">${d.tags.map((t) => `<label><input type="checkbox" data-tag="${esc(t)}" ${m.tags.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div>
           <label class="fl"><span>Preferencias (aromas, presión del masaje, alergias, bebida…)</span><textarea id="crmPref" rows="3" placeholder="Ej.: prefiere aceite de lavanda, presión suave, té verde sin azúcar">${esc(m.preferences)}</textarea></label>
           <label class="fl"><span>Notas del equipo (solo las ve el equipo)</span><textarea id="crmNotes" rows="5" placeholder="Lo que conviene recordar para la próxima visita">${esc(m.notes)}</textarea></label>
-          <div class="actions"><span class="small muted" id="crmUpd">${m.updated_at ? `Actualizado ${at(m.updated_at)}${m.updated_by ? ' por ' + esc(m.updated_by) : ''}` : ''}</span><button class="btn primary" id="crmSave">Guardar ficha</button></div>
+          <div class="actions"><span class="small muted" id="crmUpd">${m.updated_at ? `Actualizado ${at(m.updated_at)}${m.updated_by ? ' por ' + esc(m.updated_by) : ''}` : ''}</span><button class="btn primary" id="crmSave">Guardar ficha</button></div>`}
+        </div>
+        <div class="card form" id="phEd"><h2>Antes y después</h2>
+          ${m.photos.length ? `<div class="cphotos">${m.photos.map((p) => `<figure class="cphoto"><div class="pair">${p.before ? `<img src="${IMG(p.before)}" alt="Antes"><span>Antes</span>` : ''}<img src="${IMG(p.after)}" alt="Después"><span class="r">Después</span></div><figcaption><b>${dateOnly(p.date)}</b>${p.note ? ` · ${esc(p.note)}` : ''}${p.by ? `<div class="small muted">${esc(p.by)}</div>` : ''}</figcaption>${isPro() ? '' : `<button class="btn sm danger" data-phdel="${esc(p.id)}">Borrar</button>`}</figure>`).join('')}</div>` : '<p class="muted small">Todavía no hay fotos. Sumá la del trabajo terminado y, si la tenés, la de antes.</p>'}
+          <div class="row"><label class="fl"><span>Foto de después</span><input type="file" id="phAfter" accept="image/*"></label><label class="fl"><span>Foto de antes (opcional)</span><input type="file" id="phBefore" accept="image/*"></label></div>
+          <div class="row"><label class="fl"><span>Fecha</span><input type="date" id="phDate" value="${todayKey()}"></label><label class="fl"><span>Qué se hizo (opcional)</span><input id="phNote" placeholder="Ej.: soft gel nude con glitter"></label></div>
+          <p class="err" id="phErr"></p><div class="actions"><button class="btn primary" id="phAdd">Sumar fotos</button></div>
         </div>
         ${d.giftcards.length ? `<div class="card"><h2>Gift cards</h2><table>${d.giftcards.map((g) => `<tr class="click" data-href="giftcard/${g.id}"><td>${esc(g.code)}<div class="small muted">${g.role} · ${dateOnly(g.created_at)}</div></td><td>${esc(g.service_name || fmt(g.amount))}</td><td>${pill(g.status, GSTATUS)}</td><td class="r n">${g.status === 'active' ? fmt(g.balance) : ''}</td></tr>`).join('')}</table></div>` : ''}
       </div>
       <div class="card"><h2>Historial de turnos</h2>${d.bookings.length ? `<table>${d.bookings.map((b) => `<tr class="click" data-href="turno/${b.id}"><td class="n">${shortWhen(b.start)}<div class="small muted">${b.start.slice(0, 4)}</div></td><td>${esc(b.service_name)}${b.notes ? `<div class="small muted">“${esc(b.notes)}”</div>` : ''}</td><td>${pill(b.status)}</td><td class="r n">${b.price ? fmt(b.price) : '—'}</td></tr>`).join('')}</table>` : '<p class="muted">Sin turnos.</p>'}</div>
     </div>`;
   $$('#view tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
-  $('#crmSave').onclick = async (e) => {
+  $('#crmSave')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
     try {
-      await api('/clients/ficha', { method: 'PATCH', body: { key: c.key, birthday: $('#crmBd').value, preferences: $('#crmPref').value, notes: $('#crmNotes').value, tags: $$('[data-tag]').filter((x) => x.checked).map((x) => x.dataset.tag) } });
+      await api('/clients/ficha', { method: 'PATCH', body: { key: c.key, name: $('#crmName').value, phone: $('#crmPhone').value, email: $('#crmEmail').value, address: $('#crmAddr').value, birthday: $('#crmBd').value, preferences: $('#crmPref').value, notes: $('#crmNotes').value, tags: $$('[data-tag]').filter((x) => x.checked).map((x) => x.dataset.tag) } });
       toast('Ficha guardada'); viewClient(key);
     } catch (err) { toast(err.message, true); e.target.disabled = false; }
+  });
+  // Fotos de antes y después
+  $('#phAdd').onclick = async (e) => {
+    const a = $('#phAfter').files[0], b = $('#phBefore').files[0];
+    if (!a) { $('#phErr').textContent = 'Elegí la foto de después.'; return; }
+    e.target.disabled = true; $('#phErr').textContent = '';
+    try { await api('/clients/photos', { method: 'POST', body: { key: c.key, after: await shrinkImage(a), before: b ? await shrinkImage(b) : '', date: $('#phDate').value, note: $('#phNote').value } }); toast('Fotos guardadas'); viewClient(key); }
+    catch (err) { $('#phErr').textContent = err.message; e.target.disabled = false; }
   };
+  $$('[data-phdel]').forEach((x) => (x.onclick = (ev) => { ev.preventDefault(); confirmInline(x, '¿Borrar estas fotos?', async () => { try { await api('/clients/photos', { method: 'DELETE', body: { key: c.key, id: x.dataset.phdel } }); toast('Fotos borradas'); viewClient(key); } catch (err) { $('#phErr').textContent = err.message; } }, 'Borrar'); }));
 }
 
 
@@ -693,15 +793,15 @@ async function viewSettings() {
 }
 async function viewUsers() {
   const r = await api('/users');
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Usuarios</h1><div class="sub">Recepción ve la agenda, turnos, clientas, servicios, horarios, gift cards y eventos. Administración, además, la configuración, las profesionales y el historial de cambios. Las profesionales se cargan en <a href="#profesionales">Profesionales</a>.</div></div></div>
-    <div class="grid g2"><div class="card"><table>${r.users.map((u) => `<tr><td>${esc(u.name || '—')}<div class="small muted">${esc(u.email)}</div></td><td>${esc(u.role_label)}</td><td class="r">${u.id === ME.id ? '<span class="muted small">Vos</span>' : `<button class="btn sm danger" data-rmu="${u.id}">Quitar</button>`}</td></tr>`).join('')}</table></div>
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Usuarios</h1><div class="sub">Quién entra al panel. <b>Web master</b> y <b>Administración</b> ven todo; <b>Recepción</b> ve turnos, agenda, clientas, servicios, horarios, gift cards y eventos; cada <b>Asesora de belleza</b> ve solo sus turnos, sus clientas y sus comisiones. Podés crear todos los usuarios que necesites de cada rol.</div></div></div>
+    <div class="grid g2"><div class="card"><table>${r.users.map((u) => `<tr><td>${esc(u.name || '—')}<div class="small muted">${esc(u.email)}${u.has_password === false ? ' · sin contraseña todavía' : ''}</div></td><td>${esc(u.role_label)}</td><td class="r">${u.id === ME.id ? '<span class="muted small">Vos</span>' : u.role === 'pro' ? '<a class="small" href="#asesoras">Ver en Asesoras</a>' : `<button class="btn sm danger" data-rmu="${u.id}">Quitar acceso</button>`}</td></tr>`).join('')}</table></div>
       <div class="card form"><h2>Nuevo usuario</h2><label class="fl"><span>Nombre</span><input id="uN"></label><label class="fl"><span>Email</span><input id="uE" type="email"></label><label class="fl"><span>Contraseña (10+ caracteres)</span><input id="uP" type="password" autocomplete="new-password"></label>
-        <label class="fl"><span>Rol</span><select id="uR">${Object.entries(r.roles).map(([k, l]) => `<option value="${k}" ${k === 'staff' ? 'selected' : ''}>${l}</option>`).join('')}</select></label><p class="err" id="uErr"></p><div class="actions"><button class="btn primary" id="uAdd">Crear</button></div></div></div>`;
-  $('#uAdd').onclick = async () => { try { await api('/users', { method: 'POST', body: { name: $('#uN').value, email: $('#uE').value, password: $('#uP').value, role: $('#uR').value } }); toast('Usuario creado'); viewUsers(); } catch (e) { $('#uErr').textContent = e.message; } };
+        <label class="fl"><span>Rol</span><select id="uR">${Object.entries(r.roles).map(([k, l]) => `<option value="${k}" ${k === 'staff' ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="help">Si es Asesora de belleza, después asignale sus servicios en Asesoras de belleza.</span></label><p class="err" id="uErr"></p><div class="actions"><button class="btn primary" id="uAdd">Crear usuario</button></div></div></div>`;
+  $('#uAdd').onclick = async () => { try { const x = await api('/users', { method: 'POST', body: { name: $('#uN').value, email: $('#uE').value, password: $('#uP').value, role: $('#uR').value } }); toast('Usuario creado'); if (x.user.role === 'pro') navTo('asesora/' + x.user.id); else viewUsers(); } catch (e) { $('#uErr').textContent = e.message; } };
   $$('[data-rmu]').forEach((b) => (b.onclick = (e) => confirmInline(e.target, '¿Quitar el acceso?', async () => { try { await api('/users/' + b.dataset.rmu, { method: 'DELETE' }); viewUsers(); } catch (err) { toast(err.message, true); } }, 'Quitar')));
 }
 
-// ── Profesionales (administración) ───────────────────────
+// ── Asesoras (administración) ───────────────────────
 const monthKey = () => todayKey().slice(0, 7);
 const monthLabel = (m) => { const [y, mm] = m.split('-').map(Number); return `${MONTHS[mm - 1]} ${y}`; };
 const addMonth = (m, n) => { const [y, mm] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mm - 1 + n, 1)); return d.toISOString().slice(0, 7); };
@@ -712,20 +812,20 @@ async function viewPros(editId = null) {
   const r = await api('/pros?month=' + prosMonth);
   const act = r.pros.filter((p) => p.active), off = r.pros.filter((p) => !p.active);
   const tot = act.reduce((a, p) => ({ total: a.total + p.month.total, projected: a.projected + p.month.projected, sales: a.sales + p.month.sales }), { total: 0, projected: 0, sales: 0 });
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Profesionales</h1><div class="sub">Quién hace cada servicio, sus datos, cómo se le paga y cuánto lleva cobrado. Cada una entra con su usuario y ve solo sus turnos y sus comisiones.</div></div>
-      <div class="actions"><button class="btn primary" id="pNew">Nueva profesional</button></div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Asesoras</h1><div class="sub">Quién hace cada servicio, sus datos, cómo se le paga y cuánto lleva cobrado. Cada una entra con su usuario y ve solo sus turnos y sus comisiones.</div></div>
+      <div class="actions"><button class="btn primary" id="pNew">Nueva asesora</button></div></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(prosMonth, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(prosMonth, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(prosMonth)))}</span></div>
     <div id="pEd"></div>
     <div class="grid g4" style="margin-bottom:14px">
-      <div class="card kpi accent"><div class="l">Profesionales activas</div><div class="v">${act.length}</div></div>
+      <div class="card kpi accent"><div class="l">Asesoras activas</div><div class="v">${act.length}</div></div>
       <div class="card kpi"><div class="l">Servicios realizados · ${esc(monthLabel(prosMonth))}</div><div class="v">${fmt(tot.sales)}</div></div>
       <div class="card kpi"><div class="l">A pagar por lo realizado</div><div class="v">${fmt(tot.total)}</div><div class="l">básicos + comisiones</div></div>
       <div class="card kpi"><div class="l">Proyectado del mes</div><div class="v">${fmt(tot.projected)}</div><div class="l">con los turnos que faltan</div></div>
     </div>
-    ${r.pros.length ? `<div class="card tablewrap"><table><tr><th>Profesional</th><th>Servicios</th><th>Forma de pago</th><th class="r">Realizados</th><th class="r">Comisión ganada</th><th class="r">A cobrar</th><th class="r">Por venir</th></tr>
-      ${[...act, ...off].map((p) => `<tr class="click" data-href="profesional/${p.id}"><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill s-cancelled">De baja</span>'}${p.has_access ? '' : ' <span class="pill" title="No tiene usuario para entrar al panel">Sin acceso</span>'}<div class="small muted">${esc(p.specialty || p.phone || p.email)}</div></td>
+    ${r.pros.length ? `<div class="card tablewrap"><table><tr><th>Asesora</th><th>Servicios</th><th>Forma de pago</th><th class="r">Realizados</th><th class="r">Comisión ganada</th><th class="r">A cobrar</th><th class="r">Por venir</th></tr>
+      ${[...act, ...off].map((p) => `<tr class="click" data-href="asesora/${p.id}"><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill s-cancelled">De baja</span>'}${p.has_access ? '' : ' <span class="pill" title="No tiene usuario para entrar al panel">Sin acceso</span>'}<div class="small muted">${esc(p.specialty || p.phone || p.email)}</div></td>
         <td class="small">${esc(p.service_names.join(', ') || '—')}</td><td class="small">${esc(payText(p.pay))}</td><td class="r n">${p.month.done}</td><td class="r n">${fmt(p.month.earned)}</td><td class="r n"><b>${fmt(p.month.total)}</b></td><td class="r n">${p.month.next ? `${fmt(p.month.upcoming)}<div class="small muted">${p.month.next} turno${p.month.next === 1 ? '' : 's'}</div>` : '—'}</td></tr>`).join('')}</table></div>`
-      : '<div class="empty card">Todavía no cargaste profesionales. Cuando las cargues con sus servicios, cada turno queda asignado a quien lo atiende y se calcula su comisión.</div>'}`;
+      : '<div class="empty card">Todavía no cargaste asesoras. Cuando las cargues con sus servicios, cada turno queda asignado a quien lo atiende y se calcula su comisión.</div>'}`;
   $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPros(); }));
   $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   $('#pNew').onclick = () => proForm($('#pEd'), null, r);
@@ -737,7 +837,7 @@ function proForm(box, p, meta) {
   const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', espacio: 'Alquiler de la terraza' };
   const byCat = {}; for (const s of meta.services) (byCat[s.category] = byCat[s.category] || []).push(s);
   const inp = (k, label, type = 'text', extra = '') => `<label class="fl"><span>${label}</span><input id="pf_${k}" type="${type}" value="${esc(v[k] || '')}" ${extra}></label>`;
-  box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva profesional'}</h2>
+  box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva asesora'}</h2>
     <div class="grid g2" style="gap:18px">
       <div class="form"><h3 class="h3">Datos personales</h3>
         <div class="row">${inp('name', 'Nombre y apellido')}${inp('specialty', 'Especialidad (opcional)', 'text', 'placeholder="Ej.: Head spa y masajes"')}</div>
@@ -753,7 +853,7 @@ function proForm(box, p, meta) {
       </div>
       <div class="form"><h3 class="h3">Servicios que hace</h3>
         ${Object.entries(byCat).map(([c, list]) => `<div class="fl"><span>${esc(cats[c] || c)}</span><div class="chips">${list.map((s) => `<label><input type="checkbox" data-svc="${s.id}" ${v.services.includes(s.id) ? 'checked' : ''}> ${esc(s.name)}</label>`).join('')}</div></div>`).join('')}
-        <p class="small muted">Un servicio con profesionales asignadas solo se puede reservar cuando alguna de ellas está libre, y el turno queda a nombre de quien lo atiende.</p>
+        <p class="small muted">Un servicio con asesoras asignadas solo se puede reservar cuando alguna de ellas está libre, y el turno queda a nombre de quien lo atiende.</p>
         <h3 class="h3">Cómo se le paga</h3>
         <div class="seg" id="pf_type">${Object.entries(meta.pay_types).map(([k, l]) => `<button type="button" data-ptype="${k}" aria-pressed="${v.pay.type === k}">${esc(l)}</button>`).join('')}</div>
         <div class="row"><label class="fl"><span>Comisión por servicio realizado (%)</span><input id="pf_percent" type="number" min="0" max="100" step="0.5" value="${v.pay.percent}"></label>
@@ -762,7 +862,7 @@ function proForm(box, p, meta) {
       </div>
     </div>
     <p class="err" id="pfErr"></p>
-    <div class="actions">${p && !p.has_bookings ? '' : ''}<button class="btn primary" id="pfSave">${p ? 'Guardar cambios' : 'Crear profesional'}</button><button class="btn" id="pfCancel">Cancelar</button></div></div>`;
+    <div class="actions">${p && !p.has_bookings ? '' : ''}<button class="btn primary" id="pfSave">${p ? 'Guardar cambios' : 'Crear asesora'}</button><button class="btn" id="pfCancel">Cancelar</button></div></div>`;
   let type = v.pay.type;
   const example = () => {
     const pct = Number($('#pf_percent').value) || 0, base = Number($('#pf_base').value) || 0;
@@ -784,7 +884,7 @@ function proForm(box, p, meta) {
     e.target.disabled = true;
     try {
       const r = p ? await api('/pros/' + p.id, { method: 'PATCH', body }) : await api('/pros', { method: 'POST', body });
-      PROS_CACHE = null; toast(p ? 'Cambios guardados' : 'Profesional creada'); navTo('profesional/' + r.pro.id); if (p) viewPro(p.id);
+      PROS_CACHE = null; toast(p ? 'Cambios guardados' : 'Asesora creada'); navTo('asesora/' + r.pro.id); if (p) viewPro(p.id);
     } catch (err) { $('#pfErr').textContent = err.message; e.target.disabled = false; }
   };
   $('#pfCard').scrollIntoView({ block: 'start' });
@@ -793,7 +893,7 @@ async function viewPro(id) {
   prosMonth = prosMonth || monthKey();
   const d = await api(`/pros/${id}?month=${prosMonth}`);
   const p = d.pro, r = d.report;
-  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#profesionales">← Profesionales</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Profesional')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}</div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#asesoras">← Asesoras de belleza</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Asesora')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}</div></div>
       <div class="actions"><button class="btn" id="pEdit">Editar</button><a class="btn" href="#turnos" id="pTurnos">Ver sus turnos</a></div></div>
     <div id="pEd"></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(r.month, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(r.month, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(r.month)))}</span></div>
@@ -827,12 +927,12 @@ function commissionTable(r, links) {
 // ── Historial de cambios ─────────────────────────────────
 async function viewAudit() {
   const st = { user: '', q: '' };
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Historial de cambios</h1><div class="sub">Todo lo que hace cada usuario del panel: turnos cargados, cancelados o movidos, transferencias confirmadas, precios, profesionales y configuración.</div></div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Historial de cambios</h1><div class="sub">Todo lo que hace cada usuario del panel: turnos cargados, cancelados o movidos, transferencias confirmadas, precios, asesoras y configuración.</div></div></div>
     <div class="toolbar"><select id="auU"><option value="">Todos los usuarios</option></select><input id="auQ" placeholder="Buscar (ej.: canceló, T-1042, precio)"></div><div id="auList"><p class="muted">Cargando…</p></div>`;
   const load = async () => {
     const r = await api('/audit?' + new URLSearchParams(st));
     if ($('#auU').options.length === 1) { $('#auU').innerHTML += r.users.map((u) => `<option value="${u.id}">${esc(u.name)} · ${esc(u.role_label)}</option>`).join(''); $('#auU').value = st.user; }
-    $('#auList').innerHTML = r.audit.length ? `<div class="card tablewrap"><table><tr><th>Cuándo</th><th>Quién</th><th>Qué hizo</th></tr>${r.audit.map((a) => `<tr ${a.booking_id ? `class="click" data-href="turno/${a.booking_id}"` : a.pro_id ? `class="click" data-href="profesional/${a.pro_id}"` : ''}><td class="n">${at(a.at)}</td><td><b>${esc(a.user)}</b><div class="small muted">${esc(a.role_label)}</div></td><td>${esc(a.action)}</td></tr>`).join('')}</table></div>` : '<div class="empty card">No hay cambios con ese filtro.</div>';
+    $('#auList').innerHTML = r.audit.length ? `<div class="card tablewrap"><table><tr><th>Cuándo</th><th>Quién</th><th>Qué hizo</th></tr>${r.audit.map((a) => `<tr ${a.booking_id ? `class="click" data-href="turno/${a.booking_id}"` : a.pro_id ? `class="click" data-href="asesora/${a.pro_id}"` : ''}><td class="n">${at(a.at)}</td><td><b>${esc(a.user)}</b><div class="small muted">${esc(a.role_label)}</div></td><td>${esc(a.action)}</td></tr>`).join('')}</table></div>` : '<div class="empty card">No hay cambios con ese filtro.</div>';
     $$('#auList tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   };
   $('#auU').onchange = (e) => { st.user = e.target.value; load(); };
@@ -840,7 +940,7 @@ async function viewAudit() {
   load();
 }
 
-// ── Vistas de la profesional ─────────────────────────────
+// ── Vistas de la asesora ─────────────────────────────
 async function viewProHome() {
   const d = await api('/dashboard');
   const m = d.month;
