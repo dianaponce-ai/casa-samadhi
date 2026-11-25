@@ -1,6 +1,8 @@
 // Casa Samadhi · servidor: web pública, reservas, gift cards y panel.
 import express from 'express';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { turnosPage } from './lib/turnos-page.js';
 import crypto from 'node:crypto';
 import { config, ROOT } from './lib/config.js';
 import { state, withState } from './lib/store.js';
@@ -102,8 +104,12 @@ app.use('/api', async (req, res, next) => {
 });
 
 app.use('/admin', express.static(path.join(ROOT, 'admin'), { index: 'index.html' }));
-// Turnero solo (el link para Instagram): la misma página, que se abre directo en la reserva.
-app.get(['/turnos', '/turnos/'], (req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
+// Turnero en su propia dirección (/turnos, el link para Instagram): la misma página, a pantalla completa y directo en la reserva.
+app.get('/turnos', (req, res) => {
+  const [p, q = ''] = req.originalUrl.split('?');
+  if (p.endsWith('/')) return res.redirect(302, '/turnos' + (q ? '?' + q : '')); // /turnos/ → /turnos
+  res.type('html').send(turnosPage(readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8')));
+});
 app.use(express.static(path.join(ROOT, 'public'), { extensions: ['html'], maxAge: '1h' }));
 
 app.use((err, req, res, next) => {

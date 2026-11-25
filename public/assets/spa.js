@@ -6,7 +6,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const fmt = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Turnero solo: el link de Instagram (/turnos) abre directo la reserva, sin la web.
-const SOLO = /^\/turnos\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
+const SOLO = /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -315,10 +315,24 @@ const MAX_ITEMS = 4;
 const svcName = (s) => `${s.name}${s.tag && s.category === 'manicuria' ? ` · ${s.tag}` : ''}`;
 const toMinC = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const lockDate = () => bk.items[0]?.date || '';
-function openBooking({ serviceId = null, category = null } = {}) {
+/** Dirección propia del turnero: /turnos (o el mismo archivo con ?turnos en la vista previa). */
+function turneroUrl(q = {}) {
+  const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v));
+  const qs = p.toString();
+  if (location.protocol === 'file:' || /\.html?$/.test(location.pathname)) return `${location.pathname}?turnos${qs ? '&' + qs : ''}`;
+  return '/turnos' + (qs ? '?' + qs : '');
+}
+const homeUrl = () => (location.protocol === 'file:' || /\.html?$/.test(location.pathname) ? location.pathname : '/');
+/** Desde la web, reservar abre el turnero en su página; en el turnero, se reserva ahí mismo. */
+function openBooking(opts = {}) {
+  if (SOLO) return openBookingHere(opts);
+  const s = opts.serviceId ? SITE.services.find((x) => x.id === Number(opts.serviceId)) : null;
+  location.href = turneroUrl({ servicio: s?.slug, seccion: opts.category, regalo: opts.gift });
+}
+function openBookingHere({ serviceId = null, category = null } = {}) {
   if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone, notes: bk.form.notes || ACC.stats?.lastNotes || '' };
   Object.assign(bk, { step: serviceId ? 2 : 1, info: null, items: [], service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, pro: null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
-  setHash('#reservar');
+  if (!SOLO) setHash('#reservar');
   renderBooking(true);
   if (bk.service) loadDays();
 }
@@ -739,6 +753,7 @@ function bind() {
     const stg = t.closest('[data-show-gift]'); if (stg) return showGift(stg.dataset.showGift);
     const rb = t.closest('[data-rebook]'); if (rb) { const sv = SITE.services.find((x) => rb.dataset.rebook.startsWith(x.name) && x.mode === 'online'); return openBooking(sv ? { serviceId: sv.id } : {}); }
     const bg = t.closest('[data-book-gift]');
+    if (bg && !SOLO) { location.href = turneroUrl({ regalo: bg.dataset.bookGift }); return; }
     if (bg) { openBooking(); bk.form.gift_code = bg.dataset.bookGift; api('/api/giftcards/check', { code: bg.dataset.bookGift }).then((g) => (bk.gift = g)).catch(() => {}); return; }
     if (t.closest('[data-print]')) return window.print();
     const pay = t.closest('[data-pay]'); if (pay) return goPay(pay.dataset.pay);
@@ -839,7 +854,8 @@ function startSolo() {
   $('#soloFoot').innerHTML = `<img src="${MEDIA('media/logo-casa.png')}" alt="Casa Samadhi" width="120" height="105">
     <p>${esc(S.address)} · ${esc(S.city)}</p>
     <p><a href="${wa(S.whatsapp, 'Hola! Tengo una consulta.')}" target="_blank" rel="noopener">WhatsApp ${esc(S.whatsapp)}</a> · <a href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">@${esc(S.instagram)}</a></p>
-    <p class="links"><button type="button" class="link-btn" data-account>Mi cuenta</button> · <button type="button" class="link-btn" data-gift>Gift cards</button> · <a href="/">Conocé Casa Samadhi</a></p>`;
+    <p class="links"><button type="button" class="link-btn" data-account>Mi cuenta</button> · <button type="button" class="link-btn" data-gift>Gift cards</button> · <a href="${homeUrl()}">Conocé Casa Samadhi</a></p>`;
+  $('#soloHome').href = homeUrl();
 }
 async function start() {
   bind();
@@ -849,7 +865,14 @@ async function start() {
   try { ACC = await api('/api/account/me'); } catch { ACC = null; }
   if (SOLO) startSolo();
   if (!(await handleReturn())) route();
-  if (SOLO && !$('#drawer').classList.contains('on')) openBooking();
+  if (SOLO && !$('#drawer').classList.contains('on')) {
+    // /turnos?servicio=slug abre la plaquita de ese servicio; ?seccion=manicuria filtra; ?regalo=CÓDIGO aplica la gift card.
+    const q = new URLSearchParams(location.search), sv = svcBySlug(q.get('servicio') || '');
+    openBookingHere({ category: q.get('seccion') || null });
+    if (sv && sv.mode === 'online') { bk.info = sv; renderBooking(); }
+    const code = q.get('regalo');
+    if (code) { bk.form.gift_code = code; api('/api/giftcards/check', { code }).then((g) => { bk.gift = g; renderBooking(); }).catch(() => {}); }
+  }
   window.addEventListener('casa-refresh', async () => { try { SITE = await api('/api/site'); renderSections(); } catch {} });
 }
 start();
