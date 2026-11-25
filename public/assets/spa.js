@@ -581,7 +581,8 @@ async function downloadIcs(token) {
 // ── Páginas de gracias ───────────────────────────────────
 // Dirección propia (para medir conversiones en Meta). El código del turno NO va en la dirección (el pixel la manda a Meta): queda en el navegador.
 const thanksUrl = (kind) => (location.protocol === 'file:' || /\.html?$/.test(location.pathname) && !/gracias-/.test(location.pathname) ? `${location.pathname.replace(/gracias-(turno|comprobante)\.html$/, 'index.html')}?turnos&gracias=${kind}` : `/gracias-${kind}`);
-function goThanks(kind, token) { try { sessionStorage.setItem('cs-gracias', token); } catch {} location.href = thanksUrl(kind); }
+// Pausa breve antes de cambiar de página, para que el pixel termine de mandar el evento anterior (InitiateCheckout).
+function goThanks(kind, token) { try { sessionStorage.setItem('cs-gracias', token); } catch {} setTimeout(() => { location.href = thanksUrl(kind); }, 300); }
 async function showThanks(kind) {
   let token = ''; try { token = sessionStorage.getItem('cs-gracias') || ''; } catch {}
   const title = kind === 'comprobante' ? '¡Gracias!' : '¡Gracias por reservar!';
