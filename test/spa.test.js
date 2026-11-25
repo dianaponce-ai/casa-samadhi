@@ -32,7 +32,7 @@ test('reserva con seña: queda guardada, se confirma al pagar y el horario se oc
   assert.equal(p.booking.deposit_paid, 16500);
   assert.ok(env.sent.some((m) => m.template === 'booking_confirmed' && m.to === 'ana@ejemplo.com'));
   // La manicuría usa otro espacio: ese horario sigue libre para ella.
-  assert.ok(slotsFor(st, env, st.services.find((s) => s.slug === 'esmaltado-tradicional'), '2026-11-04').includes('10:00'));
+  assert.ok(slotsFor(st, env, st.services.find((s) => s.slug === 'dipping'), '2026-11-04').includes('10:00'));
 });
 
 test('la reserva sin pagar se libera al vencer el tiempo', async () => {
@@ -162,12 +162,12 @@ test('reserva con varios servicios: una sola seña, no se superponen y se cancel
   await assert.rejects(call(st, env, 'POST', '/api/bookings', { items: [{ service_id: 1, date: '2026-11-04', time: '10:00' }, { service_id: mani.id, date: '2026-11-04', time: '10:30' }], ...who }), (e) => e.status === 409);
   const r = await call(st, env, 'POST', '/api/bookings', { items: [{ service_id: 1, date: '2026-11-04', time: '10:00' }, { service_id: mani.id, date: '2026-11-04', time: '11:00' }], ...who });
   assert.equal(r.booking.items.length, 2);
-  assert.equal(r.booking.price, 55000 + 16000);
-  assert.equal(r.booking.deposit_due, 16500 + 4800);
+  assert.equal(r.booking.price, 55000 + 20000);
+  assert.equal(r.booking.deposit_due, 16500 + 6000);
   assert.equal(st.bookings[0].group, st.bookings[1].group);
   const p = await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token });
   assert.equal(p.booking.status, 'confirmed');
-  assert.deepEqual(st.bookings.map((b) => b.deposit_paid), [16500, 4800]);
+  assert.deepEqual(st.bookings.map((b) => b.deposit_paid), [16500, 6000]);
   assert.equal(env.sent.filter((m) => m.template === 'booking_confirmed').length, 1); // un solo email para toda la reserva
   await call(st, env, 'POST', `/api/bookings/${r.booking.token}/cancel`, {});
   assert.deepEqual(st.bookings.map((b) => b.status), ['cancelled', 'cancelled']);
@@ -257,4 +257,24 @@ test('transferencia: se guarda hasta 1 hora antes del turno y no se ofrece para 
   st.settings.booking.minNoticeHours = 0;
   await assert.rejects(call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-03', time: '10:00', ...who, pay_method: 'transfer', email: 'otra@ejemplo.com' }), (e) => e.status === 422);
   assert.equal(st.bookings.length, 1);
+});
+
+test('migración de la carta de manicuría: actualiza, suma y saca servicios sin perder ids ni turnos', async () => {
+  const st = seedState(), env = makeEnv();
+  // Estado viejo: la carta de octubre.
+  st.services = st.services.filter((s) => s.category !== 'manicuria');
+  const old = [['esmaltado-semipermanente', 'Esmaltado semipermanente', 16000], ['esmaltado-tradicional', 'Esmaltado tradicional', 10000], ['soft-gel-sencillo', 'Soft gel', 25000], ['soft-gel-complejo', 'Soft gel', 30000], ['retirado-semi-capping', 'Retirado de semi o capping', 5000]];
+  for (const [slug, name, price] of old) st.services.push({ id: ++st.ids.service, position: st.services.length, slug, name, price, category: 'manicuria', resource: 'manicuria', mode: 'online', duration: 60, visible: true, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '' });
+  const semi = st.services.find((s) => s.slug === 'esmaltado-semipermanente'), trad = st.services.find((s) => s.slug === 'esmaltado-tradicional');
+  st.bookings.push({ id: 1, service_id: trad.id, status: 'confirmed', start: '2026-11-10 10:00', duration: 45, resource: 'manicuria' });
+  st.staff.push({ id: 1, role: 'pro', name: 'Sol', services: [semi.id, trad.id] });
+  st.meta.migrations = st.meta.migrations.filter((k) => k !== 'manicuria-carta-2026-11');
+  const site = await call(st, env, 'GET', '/api/site');
+  const mani = site.services.filter((s) => s.category === 'manicuria');
+  assert.deepEqual(mani.map((s) => s.name), ['Semipermanente', 'Soft gel', 'Dipping', 'Belleza de pies', 'Combo manos y pies', 'Pedicuría', 'Retirado de esmalte']);
+  assert.equal(mani[0].id, semi.id);
+  assert.equal(mani[0].price, 20000); assert.equal(mani[0].price_transfer, 22000);
+  assert.ok(st.services.find((s) => s.id === trad.id && !s.visible), 'con turnos por delante se oculta');
+  assert.ok(!st.services.some((s) => s.slug === 'soft-gel-complejo'));
+  assert.ok(mani.every((s) => st.staff[0].services.includes(s.id)), 'la manicura queda asignada a la carta nueva');
 });

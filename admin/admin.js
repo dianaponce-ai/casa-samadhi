@@ -363,14 +363,14 @@ async function viewServices(editId = null) {
   const list = await services();
   const r = await api('/services');
   const cats = r.categories, res = r.resources;
-  const ed = editId === 'new' ? { id: null, name: '', tag: '', short: '', includes: [], category: cats[0].key, resource: res[0].key, mode: 'online', duration: 60, price: '', image: '', visible: true, featured: false, days: [], whatsapp: '' } : list.find((s) => s.id === editId);
+  const ed = editId === 'new' ? { id: null, name: '', tag: '', short: '', includes: [], category: cats[0].key, resource: res[0].key, mode: 'online', duration: 60, price: '', price_transfer: '', image: '', visible: true, featured: false, days: [], whatsapp: '' } : list.find((s) => s.id === editId);
   $('#view').innerHTML = `<div class="page-head"><div><h1>Servicios</h1><div class="sub">${list.length} servicios · los precios y duraciones se ven en la web</div></div><div class="actions"><button class="btn primary" id="sNew">Nuevo servicio</button></div></div>
     ${ed ? `<div class="card form" id="sEd" style="margin-bottom:14px"><h2>${ed.id ? 'Editar servicio' : 'Nuevo servicio'}</h2>
       <div class="row"><label class="fl"><span>Nombre</span><input id="eName" value="${esc(ed.name)}"></label><label class="fl"><span>Etiqueta (opcional)</span><input id="eTag" value="${esc(ed.tag)}" placeholder="Head spa, Diseño sencillo…"></label></div>
       <div class="row"><label class="fl"><span>Sección de la web</span><select id="eCat">${cats.map((c) => `<option value="${c.key}" ${c.key === ed.category ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
         <label class="fl"><span>Cómo se reserva</span><select id="eMode">${Object.entries(MODES).map(([k, l]) => `<option value="${k}" ${k === ed.mode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="fl"><span>Dónde se hace</span><select id="eRes">${res.map((x) => `<option value="${x.key}" ${x.key === ed.resource ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><span class="help">Dos servicios del mismo espacio no se superponen.</span></label></div>
-      <div class="row"><label class="fl"><span>Precio ($)</span><input id="ePrice" type="number" min="0" value="${ed.price ?? ''}" placeholder="Vacío = consultar"></label><label class="fl"><span>Duración (minutos)</span><input id="eDur" type="number" min="0" step="5" value="${ed.duration}"></label>
+      <div class="row"><label class="fl"><span>Precio ($)</span><input id="ePrice" type="number" min="0" value="${ed.price ?? ''}" placeholder="Vacío = consultar"><span class="help">En efectivo. La seña se calcula sobre este precio.</span></label><label class="fl"><span>Precio con transferencia ($, opcional)</span><input id="ePriceT" type="number" min="0" value="${ed.price_transfer ?? ''}" placeholder="Vacío = el mismo"></label><label class="fl"><span>Duración (minutos)</span><input id="eDur" type="number" min="0" step="5" value="${ed.duration}"></label>
         <label class="fl"><span>WhatsApp propio (opcional)</span><input id="eWa" value="${esc(ed.whatsapp)}" placeholder="Si lo atiende otra persona"></label></div>
       <label class="fl"><span>Descripción corta</span><textarea id="eShort" rows="2">${esc(ed.short)}</textarea></label>
       <label class="fl"><span>Qué incluye (uno por línea)</span><textarea id="eInc" rows="4">${esc((ed.includes || []).join('\n'))}</textarea></label>
@@ -380,7 +380,7 @@ async function viewServices(editId = null) {
       <p class="err" id="eErr"></p>
       <div class="actions"><button class="btn primary" id="eSave">Guardar</button><button class="btn" id="eCancel">Cancelar</button>${ed.id ? '<button class="btn danger" id="eDel">Borrar</button>' : ''}</div></div>` : ''}
     ${cats.map((c) => { const items = list.filter((s) => s.category === c.key); return items.length ? `<div class="card" style="margin-bottom:14px"><h2>${esc(c.name)}</h2><div class="tablewrap"><table><tr><th>Servicio</th><th>Reserva</th><th class="r">Duración</th><th class="r">Precio</th><th></th></tr>
-      ${items.map((s) => `<tr class="click" data-edit="${s.id}"><td>${esc(s.name)}${s.tag ? ` <span class="muted">· ${esc(s.tag)}</span>` : ''}${s.visible ? '' : ' <span class="pill">Oculto</span>'}</td><td>${MODES[s.mode]}</td><td class="r n">${s.duration ? s.duration + ' min' : '—'}</td><td class="r n">${s.price ? fmt(s.price) : 'Consultar'}</td>
+      ${items.map((s) => `<tr class="click" data-edit="${s.id}"><td>${esc(s.name)}${s.tag ? ` <span class="muted">· ${esc(s.tag)}</span>` : ''}${s.visible ? '' : ' <span class="pill">Oculto</span>'}</td><td>${MODES[s.mode]}</td><td class="r n">${s.duration ? s.duration + ' min' : '—'}</td><td class="r n">${s.price ? fmt(s.price) : 'Consultar'}${s.price_transfer ? `<div class="small muted">Transf. ${fmt(s.price_transfer)}</div>` : ''}</td>
         <td class="r"><button class="btn sm" data-move="${s.id}:-1" title="Subir">↑</button> <button class="btn sm" data-move="${s.id}:1" title="Bajar">↓</button></td></tr>`).join('')}</table></div></div>` : ''; }).join('')}`;
   $('#sNew').onclick = () => viewServices('new');
   $$('[data-edit]').forEach((tr) => (tr.onclick = (e) => { if (e.target.closest('[data-move]')) return; viewServices(Number(tr.dataset.edit)); }));
@@ -399,7 +399,7 @@ async function viewServices(editId = null) {
   $('#eCancel').onclick = () => viewServices();
   $('#eSave').onclick = async () => {
     const days = $$('[data-day]').filter((c) => c.checked).map((c) => Number(c.dataset.day));
-    const body = { name: $('#eName').value, tag: $('#eTag').value, category: $('#eCat').value, mode: $('#eMode').value, resource: $('#eRes').value, price: $('#ePrice').value, duration: $('#eDur').value, whatsapp: $('#eWa').value, short: $('#eShort').value, includes: $('#eInc').value, image: $('#eImg').value, visible: $('#eVis').checked, days: days.length === 7 ? [] : days };
+    const body = { name: $('#eName').value, tag: $('#eTag').value, category: $('#eCat').value, mode: $('#eMode').value, resource: $('#eRes').value, price: $('#ePrice').value, price_transfer: $('#ePriceT').value, duration: $('#eDur').value, whatsapp: $('#eWa').value, short: $('#eShort').value, includes: $('#eInc').value, image: $('#eImg').value, visible: $('#eVis').checked, days: days.length === 7 ? [] : days };
     try { await (ed.id ? api('/services/' + ed.id, { method: 'PATCH', body }) : api('/services', { method: 'POST', body })); toast('Servicio guardado'); viewServices(); } catch (e) { $('#eErr').textContent = e.message; }
   };
   $('#eDel')?.addEventListener('click', (e) => confirmInline(e.target, '¿Borrar el servicio?', async () => { try { await api('/services/' + ed.id, { method: 'DELETE' }); toast('Borrado'); viewServices(); } catch (err) { $('#eErr').textContent = err.message; } }, 'Borrar'));

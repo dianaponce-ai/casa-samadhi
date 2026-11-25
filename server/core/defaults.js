@@ -1,5 +1,5 @@
 // Datos iniciales de Casa Samadhi: servicios, horarios y textos.
-// Precios y servicios tomados del Instagram @casasamadhistyle (octubre 2026). Todo se puede cambiar desde el panel.
+// Precios y servicios tomados del Instagram @casasamadhistyle (octubre 2026; manicuría actualizada en noviembre 2026). Todo se puede cambiar desde el panel.
 // Las duraciones que no figuraban en Instagram son estimadas y conviene revisarlas.
 
 export const CATEGORIES = [
@@ -27,15 +27,14 @@ export const SERVICES = [
     short: 'Perfecto para liberar tensión física. No incluye head spa.',
     includes: ['Masaje relajante corporal', 'Aromaterapia', 'Pindas herbales calientes', 'Sonidos de cuencos'] },
 
-  { slug: 'esmaltado-semipermanente', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Esmaltado semipermanente', duration: 60, price: 16000, image: 'media/unas.webp' },
-  { slug: 'esmaltado-tradicional', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Esmaltado tradicional', duration: 45, price: 10000 },
-  { slug: 'capping-gel', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Capping gel nivelador', duration: 75, price: 20000 },
-  { slug: 'soft-gel-sencillo', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Soft gel', tag: 'Diseño sencillo', duration: 90, price: 25000 },
-  { slug: 'soft-gel-complejo', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Soft gel', tag: 'Diseño complejo', duration: 120, price: 30000 },
-  { slug: 'retirado-semi-capping', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de semi o capping', duration: 20, price: 5000 },
-  { slug: 'retirado-soft-gel', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de soft gel', duration: 30, price: 7000 },
-  { slug: 'retirado-nuevo-servicio', category: 'manicuria', resource: 'manicuria', mode: 'menu', name: 'Retirado + nuevo servicio', tag: 'Se suma al servicio nuevo', duration: 0, price: 1500 },
-  { slug: 'retirado-otro-salon', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de otro salón', duration: 30, price: 9000 },
+  // Manicuría: carta de noviembre 2026. `price` es el precio en efectivo (sobre ese se calcula la seña); `price_transfer`, con transferencia.
+  { slug: 'esmaltado-semipermanente', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Semipermanente', duration: 60, price: 20000, price_transfer: 22000, image: 'media/unas.webp' },
+  { slug: 'soft-gel', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Soft gel', duration: 90, price: 30000, price_transfer: 32000 },
+  { slug: 'dipping', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Dipping', duration: 75, price: 22000, price_transfer: 24000 },
+  { slug: 'belleza-de-pies', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Belleza de pies', duration: 60, price: 23000, price_transfer: 25000 },
+  { slug: 'combo-manos-y-pies-semi', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Combo manos y pies', tag: 'Semipermanente', duration: 120, price: 40000, price_transfer: 42000 },
+  { slug: 'pedicuria', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Pedicuría', duration: 75, price: 32000, price_transfer: 34000 },
+  { slug: 'retirado-de-esmalte', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de esmalte', duration: 20, price: 5000 },
 
   { slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', tag: 'Lecturas personalizadas', duration: 45, price: null, image: 'media/deco-cristal.webp',
     short: 'Una lectura para hacerle una pregunta al tarot y recibir el mensaje del oráculo.' },

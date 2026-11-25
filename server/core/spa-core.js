@@ -53,6 +53,41 @@ const MIGRATIONS = {
     const nuevas = FAQ.filter((f) => f.q === '¿Cuánto es la seña y cómo se paga?' || f.q === '¿Puedo reservar más de un servicio?');
     faq.splice(i, 1, ...nuevas);
   },
+  'manicuria-carta-2026-11': (st) => {
+    // Nueva carta de manicuría: actualiza los que siguen (mismo id), suma los nuevos y saca los que ya no están.
+    const nuevos = SERVICES.filter((s) => s.category === 'manicuria');
+    const antes = { 'soft-gel': ['soft-gel-sencillo'], 'retirado-de-esmalte': ['retirado-semi-capping'] };
+    const viejos = st.services.filter((s) => s.category === 'manicuria');
+    const conManicuria = prosAll(st).filter((p) => (p.services || []).some((id) => viejos.some((s) => s.id === id)));
+    st.ids.service = Math.max(st.ids.service || 0, ...st.services.map((s) => s.id));
+    const usados = new Set();
+    nuevos.forEach((def) => {
+      const prev = viejos.find((s) => !usados.has(s.id) && (s.slug === def.slug || (antes[def.slug] || []).includes(s.slug)));
+      if (prev) {
+        usados.add(prev.id);
+        Object.assign(prev, { slug: def.slug, name: def.name, tag: def.tag || '', price: def.price, price_transfer: def.price_transfer ?? null, mode: def.mode, visible: true });
+      } else {
+        const s = { id: ++st.ids.service, position: 0, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, ...structuredClone(def) };
+        st.services.push(s); usados.add(s.id);
+      }
+    });
+    for (const p of conManicuria) p.services = [...new Set([...p.services, ...usados])];
+    for (const s of viejos) {
+      if (usados.has(s.id)) continue;
+      if (st.bookings.some((b) => b.service_id === s.id && ACTIVE.includes(b.status))) s.visible = false; // tiene turnos por delante: se oculta
+      else {
+        st.services = st.services.filter((x) => x.id !== s.id);
+        for (const p of prosAll(st)) if (p.services) p.services = p.services.filter((id) => id !== s.id);
+      }
+    }
+    // Orden: la manicuría en el orden de la carta, en el lugar donde estaba.
+    const base = Math.min(...viejos.map((s) => s.position));
+    const mani = nuevos.map((d) => st.services.find((s) => s.slug === d.slug));
+    const hidden = st.services.filter((s) => s.category === 'manicuria' && !mani.includes(s));
+    const otros = st.services.filter((s) => s.category !== 'manicuria').sort((a, b) => a.position - b.position);
+    const antesM = otros.filter((s) => s.position < base), despues = otros.filter((s) => s.position >= base);
+    [...antesM, ...mani, ...hidden, ...despues].forEach((s, i) => (s.position = i));
+  },
 };
 function migrate(st) {
   st.meta.migrations = st.meta.migrations || [];
@@ -84,7 +119,7 @@ export function seedState() {
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, audit: 0, bookingNumber: 1000 },
   };
-  SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', ...structuredClone(s) }));
+  SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, ...structuredClone(s) }));
   return st;
 }
 
@@ -185,7 +220,7 @@ export function availability(st, env, serviceId, from, days = 14, pro = null) {
 }
 
 // ── Vistas públicas ──────────────────────────────────────
-const publicService = (st, s) => ({ id: s.id, slug: s.slug, category: s.category, name: s.name, tag: s.tag, short: s.short, includes: s.includes, duration: s.duration, price: s.price, mode: s.mode, image: s.image, featured: !!s.featured, whatsapp: s.whatsapp || '',
+const publicService = (st, s) => ({ id: s.id, slug: s.slug, category: s.category, name: s.name, tag: s.tag, short: s.short, includes: s.includes, duration: s.duration, price: s.price, price_transfer: s.price_transfer ?? null, mode: s.mode, image: s.image, featured: !!s.featured, whatsapp: s.whatsapp || '',
   pros: prosFor(st, s).map((p) => ({ id: p.id, name: p.name })) });
 const transferOn = (P) => !!(P.transferEnabled && (P.alias || P.cbu));
 const mpOn = (P) => P.mpEnabled !== false;
@@ -630,6 +665,7 @@ function serviceInput(st, body, prev = {}) {
   if (body.mode !== undefined) { if (!['online', 'whatsapp', 'menu'].includes(body.mode)) fail(422, 'Modo inválido.'); s.mode = body.mode; }
   if (body.duration !== undefined) s.duration = Math.max(0, Math.min(480, Math.round(Number(body.duration) || 0)));
   if (body.price !== undefined) s.price = body.price === '' || body.price === null ? null : Math.max(0, Math.round(Number(body.price) || 0));
+  if (body.price_transfer !== undefined) s.price_transfer = body.price_transfer === '' || body.price_transfer === null ? null : Math.max(0, Math.round(Number(body.price_transfer) || 0)) || null;
   if (body.includes !== undefined) s.includes = (Array.isArray(body.includes) ? body.includes : String(body.includes).split('\n')).map((x) => clean(x, 120)).filter(Boolean).slice(0, 12);
   if (body.days !== undefined) s.days = (body.days || []).map(Number).filter((d) => d >= 0 && d <= 6);
   for (const k of ['visible', 'featured']) if (body[k] !== undefined) s[k] = !!body[k];
@@ -959,6 +995,7 @@ export async function handle(st, env, req) {
       st.services[i] = serviceInput(st, body, prev);
       const n = st.services[i], diff = [];
       if (prev.price !== n.price) diff.push(`precio ${prev.price ? fmtMoney(prev.price) : '—'} → ${n.price ? fmtMoney(n.price) : '—'}`);
+      if ((prev.price_transfer ?? null) !== (n.price_transfer ?? null)) diff.push(`precio con transferencia ${prev.price_transfer ? fmtMoney(prev.price_transfer) : '—'} → ${n.price_transfer ? fmtMoney(n.price_transfer) : '—'}`);
       if (prev.duration !== n.duration) diff.push(`duración ${prev.duration} → ${n.duration} min`);
       if (prev.visible !== n.visible) diff.push(n.visible ? 'visible' : 'oculto');
       if (prev.name !== n.name) diff.push(`nombre "${prev.name}" → "${n.name}"`);

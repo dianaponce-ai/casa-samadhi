@@ -154,7 +154,13 @@ function renderSections() {
       ${s.includes?.length ? `<ul>${s.includes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       <div class="actions">${actionsFor(s)}</div></div></article>`).join('');
   const mani = SITE.services.filter((s) => s.category === 'manicuria');
-  $('#maniMenu').innerHTML = mani.map((s) => `<li><span class="nm">${esc(s.name)}${s.tag ? `<small>${esc(s.tag)}</small>` : ''}</span><span class="pr">${s.price ? fmt(s.price) : 'Consultar'}</span></li>`).join('');
+  // Dos columnas cuando hay precio con transferencia: efectivo y transferencia.
+  const twoPrices = mani.some((s) => s.price_transfer);
+  $('#maniMenu').classList.toggle('two', twoPrices);
+  $('#maniMenu').innerHTML = (twoPrices ? '<li class="hd" aria-hidden="true"><span></span><span class="pr">Efectivo</span><span class="pr">Transferencia</span></li>' : '')
+    + mani.map((s) => `<li><span class="nm">${esc(s.name)}${s.tag ? `<small>${esc(s.tag)}</small>` : ''}</span>${twoPrices && s.price_transfer
+      ? `<span class="pr" aria-label="Efectivo ${s.price ? fmt(s.price) : 'Consultar'}">${s.price ? fmt(s.price) : 'Consultar'}</span><span class="pr" aria-label="Transferencia ${fmt(s.price_transfer)}">${fmt(s.price_transfer)}</span>`
+      : `<span class="pr${twoPrices ? ' span' : ''}">${s.price ? fmt(s.price) : 'Consultar'}</span>`}</li>`).join('');
   const ther = SITE.services.filter((s) => s.category === 'terapias' || !['rituales', 'manicuria', 'espacio'].includes(s.category));
   // Alquiler del espacio: sección propia con foto grande.
   const space = SITE.services.filter((s) => s.category === 'espacio');

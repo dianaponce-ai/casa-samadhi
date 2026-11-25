@@ -168,6 +168,12 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 .menu .nm { font-family: var(--serif); font-size: 21px; line-height: 1.2; font-weight: 500; }
 .menu .nm small { display: block; font-family: var(--sans); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--suave); font-weight: 300; margin-top: 3px; }
 .menu .pr { font-size: 15px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.menu.two li { grid-template-columns: 1fr 92px 112px; }
+.menu.two .pr { text-align: right; }
+.menu.two .pr.span { grid-column: 2 / 4; }
+.menu li.hd { padding: 10px 0 8px; }
+.menu li.hd .pr { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--suave); }
+@media (max-width: 520px) { .menu.two li { grid-template-columns: 1fr 74px 84px; gap: 6px 10px; } .menu.two li.hd .pr { letter-spacing: .08em; } .menu.two .nm { font-size: 18px; } .menu.two .pr { font-size: 14px; } }
 .menu-note { font-size: 13px; color: var(--suave); margin: 0 0 26px; }
 
 /* ── Terapias ─────────────────────────────────── */
