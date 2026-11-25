@@ -582,3 +582,35 @@ test('horario de cada asesora: sus días y franjas, sus días libres y los turno
   assert.equal(r.timeoff.length, 0);
   assert.ok((await slots('2026-11-06')).includes('10:00'));
 });
+
+test('Nifty: arma el lote sin datos personales, con el canal; reintenta si falla; el comprobante queda en el turno', async () => {
+  const { niftyBatch, niftyDone } = await import('../server/core/spa-core.js');
+  const st = bare(), env = { ...makeEnv(), saveImage: async (d, p, o) => `uploads/${p}-${o?.pdf ? 'pdf' : 'img'}.bin` };
+  const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
+  const svc = st.services.find((s) => s.slug === 'ritual-esencial');
+  st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'casa.samadhi' };
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-05', time: '10:00', ...who, pay_method: 'transfer', origen: { canal: 'Meta', fuente: 'instagram', campania: 'Head spa', pagina: 'turnero' } });
+  assert.equal(niftyBatch(st, env), null); // apagada
+  await assert.rejects(call(st, env, 'PUT', '/api/admin/nifty', { enabled: true, url: 'http://ejemplo.com/x', secret: 'nft_' + 'a'.repeat(48) }, admin), (e) => e.status === 422); // tiene que ser https
+  await call(st, env, 'PUT', '/api/admin/nifty', { enabled: true, url: 'https://nifty-agency.com/webhooks/turnos/47', secret: 'nft_' + 'a'.repeat(48) }, admin);
+  const v = await call(st, env, 'GET', '/api/admin/nifty', undefined, admin);
+  assert.equal(v.has_secret, true); assert.equal(v.secret, undefined); // la clave no se devuelve
+  let job = niftyBatch(st, env);
+  const t = JSON.parse(job.body).turnos[0];
+  assert.deepEqual([t.codigo, t.estado, t.canal, t.fuente, t.campania, t.origen, t.fecha, t.hora], [r.booking.code, 'pendiente', 'Meta', 'instagram', 'Head spa', 'turnero', '2026-11-05', '10:00']);
+  assert.ok(!job.body.includes(who.email) && !job.body.includes(who.name) && !job.body.includes('555')); // sin datos personales
+  // Falla: reintenta más tarde
+  niftyDone(st, env, job, { ok: false, error: 'HTTP 500' });
+  assert.equal(niftyBatch(st, env), null);
+  env.advance(3 * 60e3);
+  job = niftyBatch(st, env); niftyDone(st, env, job, { ok: true });
+  assert.equal(niftyBatch(st, env), null); // al día
+  // Sube el comprobante: queda en el turno y el turno cambia → vuelve a mandarse
+  const tr = await call(st, env, 'POST', `/api/bookings/${r.booking.token}/transfer-sent`, { comprobante: 'data:application/pdf;base64,JVBERi0=' });
+  assert.equal(tr.booking.transfer.has_proof, true);
+  assert.equal(st.bookings[0].transfer_proof, 'uploads/comprobante-pdf.bin');
+  await call(st, env, 'PATCH', `/api/admin/bookings/${st.bookings[0].id}`, { transfer: 'confirm', amount: 18000 }, admin);
+  job = niftyBatch(st, env);
+  assert.equal(JSON.parse(job.body).turnos[0].estado, 'confirmado');
+  assert.equal(JSON.parse(job.body).turnos[0].sena, 18000);
+});

@@ -6,15 +6,26 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const fmt = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Turnero solo: el link de Instagram (/turnos) abre directo la reserva, sin la web.
-const SOLO = /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
+// Páginas de gracias (/gracias-turno y /gracias-comprobante): se ven como el turnero, con su propia dirección para medir conversiones.
+const THANKS = (/\/gracias-(turno|comprobante)(\.html)?\/?$/.exec(location.pathname) || [])[1] || (['turno', 'comprobante'].includes(new URLSearchParams(location.search).get('gracias')) ? new URLSearchParams(location.search).get('gracias') : '');
+const SOLO = !!THANKS || /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
+// De dónde llegó la clienta (UTM, fbclid, gclid): se guarda 30 días y viaja con la reserva (para Nifty y las campañas).
+(function captureOrigin() {
+  try {
+    const p = new URLSearchParams(location.search), src = (p.get('utm_source') || '').toLowerCase(), med = (p.get('utm_medium') || '').toLowerCase();
+    const organic = /^(organic|organico|bio|social|referral|perfil|historia|stories)$/.test(med);
+    let canal = '';
+    if (!organic && (p.get('fbclid') || /^(facebook|instagram|fb|ig|meta)$/.test(src))) canal = 'Meta';
+    else if (!organic && (p.get('gclid') || p.get('gbraid') || p.get('wbraid') || src === 'google')) canal = 'Google';
+    if (canal || src) localStorage.setItem('cs-origen', JSON.stringify({ canal: canal || 'Otro', fuente: src || (canal === 'Meta' ? 'meta' : canal === 'Google' ? 'google' : ''), campania: p.get('utm_campaign') || '', at: Date.now() }));
+  } catch {}
+})();
+const origen = () => { let o = null; try { o = JSON.parse(localStorage.getItem('cs-origen') || 'null'); } catch {} if (o && Date.now() - o.at > 30 * 864e5) o = null; return { canal: o?.canal || 'Otro', fuente: o?.fuente || '', campania: o?.campania || '', pagina: SOLO ? 'turnero' : 'web' }; };
 // Meta Pixel: eventos estándar (si el pixel está cargado).
 const px = (ev, data) => { try { window.fbq?.('track', ev, data); } catch {} };
-// Una sola vez por turno o gift card en este navegador (para no contar dos veces si vuelven a abrir el link).
-const pxOnce = (key, ev, data, custom = false) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} if (custom) { try { window.fbq?.('trackCustom', ev, data); } catch {} } else px(ev, data); };
-const bkName = (b) => (b.items?.length > 1 ? b.items.map((it) => it.service_name).join(' + ') : b.service_name);
-// Transferencia: cuenta como turno (Schedule) cuando la clienta avisa "Ya transferí" o manda el comprobante por WhatsApp.
-const pxTransfer = (b, via) => { if (!b) return; pxOnce('turno:' + b.token, 'Schedule', { content_name: bkName(b), value: b.price || 0, currency: 'ARS', pay_method: 'transferencia' }); pxOnce('comp:' + b.token, 'ComprobanteEnviado', { content_name: bkName(b), value: b.deposit_due || b.price || 0, currency: 'ARS', via }, true); };
-let shownBooking = null;
+const pxc = (ev, data) => { try { window.fbq?.('trackCustom', ev, data); } catch {} };
+// Una sola vez por gift card en este navegador (para no contar dos veces si vuelven a abrir el link).
+const pxOnce = (key, ev, data) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} px(ev, data); };
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -453,11 +464,11 @@ async function submitBooking() {
   bk.sending = true; renderBooking();
   try {
     const items = bk.items.map((it) => ({ service_id: it.service.id, date: it.date, time: it.time, pro_id: it.pro || null }));
-    const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod });
+    const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod, origen: origen() });
     px('InitiateCheckout', { content_name: bk.items.map((it) => it.service.name).join(' + '), num_items: bk.items.length, value: bk.items.reduce((a, it) => a + (it.service.price || 0), 0), currency: 'ARS' });
     bk.items = [];
     if (r.pay_url) { bk.sending = false; goPay(r.pay_url); return; }
-    showBooking(r.booking.token, r.booking, true);
+    goThanks('turno', r.booking.token);
   } catch (e) {
     bk.sending = false;
     if (e.data?.taken && bk.items.length === 1) { editItem(0); bk.error = e.message; return; }
@@ -478,12 +489,13 @@ function transferBlock(b) {
     <dl class="kv">${row('Monto', fmt(T.amount), false)}${row('Alias', T.alias, true)}${row('CBU / CVU', T.cbu, true)}${row('Titular', T.holder)}${row('Banco', T.bank)}${row('CUIT', T.cuit)}${row('Referencia', b.code)}</dl>
     <p class="note">Guardamos tu turno hasta el ${esc(new Date(b.hold_until).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }).replace(',', ''))}. Cuando veamos la transferencia te llega la confirmación por email.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
-      ${T.notified ? '<span class="pill ok">Ya nos avisaste: la estamos verificando</span>' : `<button class="btn solid" data-tsent="${esc(b.token)}">Ya transferí</button>`}
-      <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, msg)}" target="_blank" rel="noopener" data-comp="${esc(b.token)}">Mandar comprobante</a>
+      ${T.notified && T.has_proof ? '<span class="pill ok">Recibimos tu comprobante: lo estamos verificando</span>' : `<label class="btn solid proof-btn"><input type="file" accept="image/*,application/pdf" data-tproof="${esc(b.token)}" hidden>${T.notified ? 'Subir el comprobante' : 'Ya transferí: subir comprobante'}</label>`}
+      ${T.notified ? '' : `<button class="btn" data-tsent="${esc(b.token)}">Ya transferí (sin comprobante)</button>`}
+      <a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, msg)}" target="_blank" rel="noopener">Mandar por WhatsApp</a>
       ${T.can_mp ? `<button class="btn" data-paymp="${esc(b.token)}">Prefiero pagar con Mercado Pago</button>` : ''}
     </div></div>`;
 }
-async function showBooking(token, pre, track = false) {
+async function showBooking(token, pre) {
   setHash('#turno/' + token);
   openDrawer(`${head('Tu turno')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Tu turno' });
   try {
@@ -491,9 +503,6 @@ async function showBooking(token, pre, track = false) {
     const okS = ['confirmed', 'completed'].includes(b.status), badS = ['cancelled', 'expired', 'no_show'].includes(b.status);
     const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
     const many = b.items?.length > 1;
-    // Schedule: solo al volver del pago (o al reservar sin seña) con el turno ya confirmado.
-    shownBooking = b;
-    if (track && b.status === 'confirmed') pxOnce('turno:' + b.token, 'Schedule', { content_name: bkName(b), value: b.price || 0, currency: 'ARS', pay_method: 'mercadopago' });
     $('#drawer').innerHTML = `${head(many ? 'Tu reserva' : 'Tu turno')}<div class="dbody"><div class="status">
       <span class="pill ${okS ? 'ok' : badS ? 'bad' : ''}">${esc(b.status_label)}</span>
       <div class="big">${b.status === 'confirmed' ? '¡Te esperamos!' : b.status === 'pending_payment' ? 'Falta la seña' : b.status === 'pending_transfer' ? 'Falta la transferencia' : esc(b.service_name)}</div>
@@ -569,6 +578,50 @@ async function downloadIcs(token) {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+// ── Páginas de gracias ───────────────────────────────────
+// Dirección propia (para medir conversiones en Meta). El código del turno NO va en la dirección (el pixel la manda a Meta): queda en el navegador.
+const thanksUrl = (kind) => (location.protocol === 'file:' || /\.html?$/.test(location.pathname) && !/gracias-/.test(location.pathname) ? `${location.pathname.replace(/gracias-(turno|comprobante)\.html$/, 'index.html')}?turnos&gracias=${kind}` : `/gracias-${kind}`);
+function goThanks(kind, token) { try { sessionStorage.setItem('cs-gracias', token); } catch {} location.href = thanksUrl(kind); }
+async function showThanks(kind) {
+  let token = ''; try { token = sessionStorage.getItem('cs-gracias') || ''; } catch {}
+  const title = kind === 'comprobante' ? '¡Gracias!' : '¡Gracias por reservar!';
+  document.title = `${title} · Casa Samadhi`;
+  openDrawer(`${head(title)}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: title });
+  let b = null; if (token) try { b = (await api('/api/bookings/' + encodeURIComponent(token))).booking; } catch {}
+  const many = b?.items?.length > 1;
+  const sum = b ? `<dl class="kv">${many ? b.items.map((it) => `<div><dt>${it.start.slice(11)} h</dt><dd>${esc(it.service_name)}${it.pro_name ? ` · con ${esc(it.pro_name)}` : ''}</dd></div>`).join('') : `<div><dt>Servicio</dt><dd>${esc(b.service_name)}</dd></div>`}
+    <div><dt>Día y hora</dt><dd>${esc(cap(b.when))}</dd></div>${!many && b.pro_name ? `<div><dt>Te atiende</dt><dd>${esc(b.pro_name)}</dd></div>` : ''}<div><dt>Código</dt><dd>${esc(b.code)}</dd></div></dl>` : '';
+  let lead, big;
+  if (kind === 'comprobante') { big = 'Recibimos tu comprobante'; lead = 'Lo verificamos y te confirmamos el turno por correo. Si necesitás algo, escribinos por WhatsApp.'; }
+  else if (b?.status === 'pending_transfer') { big = 'Te guardamos el turno'; lead = 'Para confirmarlo, transferí la seña y subí el comprobante acá abajo.'; }
+  else if (b?.status === 'pending_payment') { big = 'Falta la seña'; lead = 'Tu horario está guardado mientras se acredita el pago.'; }
+  else { big = '¡Te esperamos!'; lead = b ? `Te mandamos la confirmación a ${esc(b.email)}. Llegá 10 minutos antes: ${esc(SITE.site.address)}.` : 'Tu turno quedó reservado. Te llega la confirmación por correo.'; }
+  $('#drawer').innerHTML = `${head(title)}<div class="dbody"><div class="status thanks">
+      <span class="pill ok">${kind === 'comprobante' ? 'Comprobante enviado' : b?.status === 'confirmed' ? 'Turno confirmado' : 'Turno reservado'}</span>
+      <div class="big">${big}</div><p>${lead}</p>
+      ${sum}
+      ${kind === 'turno' && b?.transfer ? transferBlock(b) : ''}
+      ${b?.calendar && kind === 'turno' ? `<div class="cal-add"><span class="step-t" style="margin:0">Agregalo a tu calendario</span><div class="cal-btns"><a class="btn sm" href="${esc(b.calendar.google)}" target="_blank" rel="noopener">Google Calendar</a><button class="btn sm" data-ics="${esc(b.token)}">Apple / Outlook</button></div></div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap">${b ? `<button class="btn solid" data-show-turno="${esc(b.token)}">Ver mi turno</button>` : ''}<button class="btn" data-book>Reservar otro turno</button><a class="btn" href="${wa(SITE.site.whatsapp, 'Hola! Tengo una consulta sobre mi turno.')}" target="_blank" rel="noopener">WhatsApp</a></div>
+    </div></div>`;
+  // Conversión para Meta (una sola vez por turno)
+  const k = `cs-px-${kind}-${token}`; let done = false; try { done = !!sessionStorage.getItem(k); sessionStorage.setItem(k, '1'); } catch {}
+  if (!done) {
+    if (kind === 'turno') px('Schedule', { content_name: b?.service_name || '', value: b?.price || 0, currency: 'ARS' });
+    else pxc('ComprobanteEnviado', { value: b?.transfer?.amount || b?.deposit_due || 0, currency: 'ARS' });
+  }
+}
+/** Sube el comprobante (foto achicada en el navegador, o PDF de hasta 4 MB). */
+async function readProof(file) {
+  if (file.type === 'application/pdf') {
+    if (file.size > 4 * 1024 * 1024) throw new Error('El PDF es muy pesado (máximo 4 MB). Probá con una captura de pantalla.');
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('No pudimos leer el archivo.')); r.readAsDataURL(file); });
+  }
+  const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/webp', 0.85); return url.startsWith('data:image/webp') ? url : c.toDataURL('image/jpeg', 0.88);
+}
+
 // ── Gift cards ───────────────────────────────────────────
 const gf = { choice: null, form: {}, errors: {}, error: '', sending: false };
 function openGift(serviceId = null) {
@@ -629,7 +682,7 @@ async function showGift(token, pre, track = false) {
   openDrawer(`${head('Gift card')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Gift card' });
   try {
     const g = pre || (await api('/api/giftcards/' + encodeURIComponent(token))).gift;
-    // Purchase: al volver del pago con la gift card ya activa (una vez por gift card).
+    // Purchase: al volver del pago con la gift card ya activa (una vez por gift card; no al abrir el link del email).
     if (track && g.status === 'active' && g.token) pxOnce('gift:' + g.token, 'Purchase', { content_name: 'Gift card' + (g.service_name ? ' · ' + g.service_name : ''), content_type: 'product', value: g.amount || 0, currency: 'ARS' });
     const exp = g.expires_at ? new Date(g.expires_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     $('#drawer').innerHTML = `${head('Gift card')}<div class="dbody"><div class="status">
@@ -657,7 +710,7 @@ async function simulate(kind, token, result) {
   try {
     const r = await api('/api/pay/simulate', { kind, token, result });
     if (result === 'rejected') toast('Pago rechazado (prueba)');
-    if (kind === 'gift') showGift(token, r.gift, true); else showBooking(token, r.booking, true);
+    if (kind === 'gift') showGift(token, r.gift, true); else if (result === 'rejected') showBooking(token, r.booking); else goThanks('turno', token);
   } catch (e) { toast(e.message); }
 }
 
@@ -795,7 +848,6 @@ function bind() {
   document.addEventListener('click', async (e) => {
     const t = e.target;
     if (t.closest('a[href^="https://wa.me"]')) px('Contact', { content_name: 'WhatsApp' });
-    const comp = t.closest('[data-comp]'); if (comp && shownBooking?.token === comp.dataset.comp) pxTransfer(shownBooking, 'whatsapp');
     const act = t.closest('[data-act]')?.dataset.act;
     if (act) { const [k, v] = act.split(':'); if (k === 'book') openBooking({ serviceId: svcBySlug(v)?.id }); if (k === 'cat') openBooking({ category: v }); return; }
     const wk = t.closest('[data-work]'); if (wk) { const [sid, i] = wk.dataset.work.split(':'); return openWork(sid, Number(i)); }
@@ -861,7 +913,7 @@ function bind() {
     if (t.closest('[data-add-item]')) { readBkForm(); Object.assign(bk, { step: 1, service: null, pro: null, filter: null, error: '' }); return renderBooking(); }
     const cp = t.closest('[data-copy]'); if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast('Copiado'); } catch { toast(cp.dataset.copy); } return; }
     const ts = t.closest('[data-tsent]');
-    if (ts) { ts.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(ts.dataset.tsent)}/transfer-sent`, {}); pxTransfer(r.booking, 'ya_transferi'); toast('¡Gracias! La verificamos y te confirmamos'); showBooking(r.booking.token, r.booking); } catch (err) { toast(err.message); ts.disabled = false; } return; }
+    if (ts) { ts.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(ts.dataset.tsent)}/transfer-sent`, {}); goThanks('comprobante', r.booking.token); } catch (err) { toast(err.message); ts.disabled = false; } return; }
     const pm = t.closest('[data-paymp]');
     if (pm) { pm.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(pm.dataset.paymp)}/pay-mp`, {}); goPay(r.pay_url); } catch (err) { toast(err.message); pm.disabled = false; } return; }
     if (t.matches('input[name="pay_method"]')) { readBkForm(); return renderBooking(); }
@@ -886,6 +938,12 @@ function bind() {
   document.addEventListener('input', (e) => {
     const fl = e.target.closest('#bkForm .fl, #gfForm .fl');
     if (fl && e.target.getAttribute('aria-invalid')) { e.target.removeAttribute('aria-invalid'); fl.querySelector('.err')?.remove(); const k = e.target.name; delete bk.errors[k]; delete gf.errors[k]; } if (e.target.id === 'g_custom') { const v = Number(e.target.value.replace(/\D/g, '')); gf.choice = v ? { amount: v, custom: true } : null; $$('#drawer .amt').forEach((b) => b.setAttribute('aria-pressed', 'false')); const s = $('#drawer .dfoot .sum b'); if (s) s.textContent = v ? fmt(v) : '—'; } });
+  document.addEventListener('change', async (e) => {
+    const f = e.target.closest?.('[data-tproof]'); if (!f || !f.files[0]) return;
+    const lab = f.closest('label'); lab?.classList.add('busy'); if (lab) lab.lastChild.textContent = 'Subiendo…';
+    try { const comprobante = await readProof(f.files[0]); const r = await api(`/api/bookings/${encodeURIComponent(f.dataset.tproof)}/transfer-sent`, { comprobante }); goThanks('comprobante', r.booking.token); }
+    catch (err) { toast(err.message); lab?.classList.remove('busy'); if (lab) lab.lastChild.textContent = 'Subir el comprobante'; f.value = ''; }
+  });
   document.addEventListener('submit', async (e) => {
     if (e.target.id === 'bkForm') { e.preventDefault(); submitBooking(); }
     if (e.target.id === 'gfForm') { e.preventDefault(); submitGift(); }
@@ -926,8 +984,9 @@ async function handleReturn() {
   if (p.get('simulado')) { showSimPay(kind, token); return true; }
   const pid = p.get('payment_id') || p.get('collection_id');
   if (pid) { try { await api('/api/pay/confirm', { kind, token, payment_id: pid }); } catch {} }
-  if (kind === 'gift') showGift(token, null, true); else showBooking(token, null, true);
-  if (p.get('status') === 'rejected' || p.get('collection_status') === 'rejected') toast('El pago no se aprobó. Podés intentar de nuevo.');
+  const rejected = p.get('status') === 'rejected' || p.get('collection_status') === 'rejected';
+  if (kind === 'gift') showGift(token, null, true); else if (rejected) showBooking(token); else { goThanks('turno', token); return true; }
+  if (rejected) toast('El pago no se aprobó. Podés intentar de nuevo.');
   return true;
 }
 
@@ -949,6 +1008,7 @@ async function start() {
   renderHero(); bindHero(); renderSections(); onScroll();
   try { ACC = await api('/api/account/me'); } catch { ACC = null; }
   if (SOLO) startSolo();
+  if (THANKS) { showThanks(THANKS); return; }
   if (!(await handleReturn())) route();
   if (SOLO && !$('#drawer').classList.contains('on')) {
     // /turnos?servicio=slug abre la plaquita de ese servicio; ?seccion=manicuria filtra; ?regalo=CÓDIGO aplica la gift card.

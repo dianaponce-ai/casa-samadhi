@@ -600,3 +600,8 @@ body.lb-on { overflow: hidden; }
 /* Mi cuenta: reservar arriba de todo */
 .acc-book { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .drawer .acc-book .btn { flex: 1 1 180px; }
+
+/* Comprobante y páginas de gracias */
+.proof-btn { cursor: pointer; }
+.proof-btn.busy { opacity: .6; pointer-events: none; }
+.status.thanks .big { font-size: 44px; }

@@ -2,14 +2,14 @@
 import express from 'express';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
-import { turnosPage } from './lib/turnos-page.js';
+import { turnosPage, thanksPage } from './lib/turnos-page.js';
 import { saveImage, deleteImage, UPLOADS } from './lib/images.js';
 import crypto from 'node:crypto';
 import { config, ROOT } from './lib/config.js';
 import { state, withState } from './lib/store.js';
 import { sendEmail } from './lib/mail.js';
 import { createPayment, readPayment } from './integrations/mercadopago.js';
-import { handle, applyPayment, tick, addStaff, ApiError, bookingIcs } from './core/spa-core.js';
+import { handle, applyPayment, tick, addStaff, ApiError, bookingIcs, niftyBatch, niftyDone } from './core/spa-core.js';
 
 // ── Contraseñas y sesiones ───────────────────────────────
 export function hashPassword(pw) {
@@ -47,7 +47,18 @@ export const env = {
   checkPassword: async (pw, h) => checkPassword(pw, h),
   saveImage,
   deleteImage,
+  niftySend,
 };
+
+// Nifty: envío firmado (sha256 HMAC del cuerpo con la clave del cliente).
+async function niftySend(url, secret, body) {
+  try {
+    const sig = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Nifty-Signature': sig, 'User-Agent': 'Casa Samadhi' }, body, signal: AbortSignal.timeout(15000) });
+    const d = await r.json().catch(() => ({}));
+    return r.ok && d.ok !== false ? { ok: true } : { ok: false, error: `HTTP ${r.status}${d.error ? ' · ' + d.error : ''}` };
+  } catch (e) { return { ok: false, error: e.name === 'TimeoutError' ? 'no respondió a tiempo' : e.message }; }
+}
 
 // ── App ──────────────────────────────────────────────────
 const app = express();
@@ -56,7 +67,7 @@ app.disable('x-powered-by');
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' }); next(); });
 // Las fotos de los trabajos viajan como data URL: esas rutas del panel aceptan hasta 12 MB; el resto, 100 KB.
 const bigJson = express.json({ limit: '12mb' }), smallJson = express.json({ limit: '100kb' });
-app.use((req, res, next) => (/^\/api\/admin\/(services\/\d+\/works|works-before|clients\/photos)/.test(req.path) ? bigJson : smallJson)(req, res, next));
+app.use((req, res, next) => (/^\/api\/admin\/(services\/\d+\/works|works-before|clients\/photos)|^\/api\/bookings\/[A-Za-z0-9]+\/transfer-sent$/.test(req.path) ? bigJson : smallJson)(req, res, next));
 
 // Límite simple por IP para lo que crea cosas (reservas, gift cards, ingreso al panel).
 const hits = new Map();
@@ -69,6 +80,7 @@ function limit(max, minutes) {
   };
 }
 app.post(['/api/bookings', '/api/giftcards', '/api/withdrawals'], limit(20, 15));
+app.post('/api/bookings/:token/transfer-sent', limit(10, 15));
 app.post(['/api/admin/login', '/api/account/login'], limit(10, 15));
 app.post('/api/account/register', limit(8, 60));
 app.post(['/api/account/forgot', '/api/account/reset'], limit(6, 30));
@@ -117,6 +129,8 @@ app.use('/api', async (req, res, next) => {
 app.use('/uploads', express.static(UPLOADS, { maxAge: '30d', fallthrough: false }));
 app.use('/admin', express.static(path.join(ROOT, 'admin'), { index: 'index.html' }));
 // Turnero en su propia dirección (/turnos, el link para Instagram): la misma página, a pantalla completa y directo en la reserva.
+// Páginas de gracias: al reservar y al enviar el comprobante de la transferencia.
+app.get(['/gracias-turno', '/gracias-comprobante'], (req, res) => res.type('html').send(thanksPage(readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8'), req.path.endsWith('comprobante') ? 'comprobante' : 'turno')));
 app.get('/turnos', (req, res) => {
   const [p, q = ''] = req.originalUrl.split('?');
   if (p.endsWith('/')) return res.redirect(302, '/turnos' + (q ? '?' + q : '')); // /turnos/ → /turnos
@@ -141,6 +155,15 @@ if (!state.staff.some((u) => u.role === 'admin') && config.adminEmail && config.
 if (config.webmasterPassword && config.webmasterPassword.length >= 10) {
   await withState(async (st) => { const u = st.staff.find((x) => x.role === 'webmaster' && !x.password_hash); if (u) { u.password_hash = hashPassword(config.webmasterPassword); console.log(`Contraseña del web master cargada: ${u.email}`); } });
 }
+// Nifty: cada minuto, los turnos nuevos o que cambiaron (el envío va fuera del bloqueo, para no frenar las reservas).
+setInterval(async () => {
+  try {
+    const job = await withState((st) => niftyBatch(st, env), false);
+    if (!job) return;
+    const res = await niftySend(job.url, job.secret, job.body);
+    await withState((st) => niftyDone(st, env, job, res));
+  } catch (e) { console.error('Nifty:', e.message); }
+}, 60e3).unref();
 // Tareas cada minuto: libera reservas sin seña, manda recordatorios, vence gift cards.
 setInterval(() => withState((st) => tick(st, env).then((changed) => ({ save: changed })), false).catch((e) => console.error('Tareas:', e.message)), 60e3).unref();
 

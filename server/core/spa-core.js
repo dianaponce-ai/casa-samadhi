@@ -24,6 +24,8 @@ function ensure(st) {
   st.ids.audit = st.ids.audit || 0;
   st.cash = st.cash || { moves: [], closings: [] };
   st.ids.cash = st.ids.cash || 0;
+  st.integrations = st.integrations || {};
+  st.integrations.nifty = { enabled: false, url: '', secret: '', sent: 0, last_ok: '', last_error: '', fails: 0, retry_at: 0, ...(st.integrations.nifty || {}) };
   st.settings.pay = { ...structuredClone(PAYMENTS), ...(st.settings.pay || {}) };
   migrate(st);
 }
@@ -181,7 +183,7 @@ function migrate(st) {
 export function serviceWhatsapp(st) {
   return st.settings.site.whatsapp;
 }
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit', 'cash'];
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit', 'cash', 'integrations'];
 export const ROLES = { webmaster: 'Web master', admin: 'Administración', staff: 'Recepción', pro: 'Asesora de belleza' };
 /** Administración y web master tienen los mismos permisos en el panel. */
 export const isAdminRole = (u) => u?.role === 'admin' || u?.role === 'webmaster';
@@ -200,7 +202,7 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, pay: structuredClone(PAYMENTS), hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '', migrations: Object.keys(MIGRATIONS) }, customers: [], resets: [], crm: {}, audit: [], cash: { moves: [], closings: [] },
+    meta: { lastDaily: '', migrations: Object.keys(MIGRATIONS) }, customers: [], resets: [], crm: {}, audit: [], cash: { moves: [], closings: [] }, integrations: {},
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, audit: 0, bookingNumber: 1000 },
   };
@@ -421,7 +423,7 @@ function publicBooking(st, env, b) {
     items: g.items.map(({ id, ...it }) => ({ ...it, when: longDate(it.start) })),
     whatsapp: serviceWhatsapp(st, st.services.find((s) => s.id === g.service_id)),
     pay_method: g.pay_method || '', pay_method_label: PAY_METHODS[g.pay_method] || '',
-    transfer: g.status === 'pending_transfer' ? { ...payInfo(st), amount: g.deposit_due, notified: !!g.transfer_notified, can_mp: mpOn(st.settings.pay) } : null,
+    transfer: g.status === 'pending_transfer' ? { ...payInfo(st), amount: g.deposit_due, notified: !!g.transfer_notified, has_proof: !!b.transfer_proof, can_mp: mpOn(st.settings.pay) } : null,
     hold_until: g.hold_until, pay_url: g.status === 'pending_payment' ? g.pay_url : null,
     can_cancel: ACTIVE.includes(g.status) && g.status !== 'attention' && localToMs(g.start) - env.now() > st.settings.booking.cancelHours * 3600e3,
     // Cambiar de día u horario: un solo servicio, confirmado y con la anticipación de la política de cancelación.
@@ -556,6 +558,7 @@ async function createBooking(st, env, body, customer = null) {
         status: 'confirmed', source: 'web', created_at: iso(env), customer_id: customer?.id || null, pay_method: 'none',
         hold_until: iso(env), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [],
       };
+      b.attr = originInput(body.origen); // de dónde vino la clienta (para el embudo de Nifty y las campañas)
       st.bookings.push(b); made.push(b);
     }
   } catch (err) {
@@ -1141,6 +1144,82 @@ export function profitAndLoss(st, env, months = 12) {
   return { months: list.reverse(), total, current: now };
 }
 
+// ── Origen de la reserva ─────────────────────────────────
+// La web guarda de dónde llegó la clienta (UTM, fbclid, gclid): Meta, Google u Otro, más la fuente y la campaña.
+function originInput(o) {
+  if (!o || typeof o !== 'object') return { canal: 'Otro', fuente: '', campania: '', pagina: 'web' };
+  const canal = ['Meta', 'Google', 'Otro'].includes(o.canal) ? o.canal : 'Otro';
+  return { canal, fuente: clean(o.fuente, 60), campania: clean(o.campania, 120), pagina: o.pagina === 'turnero' ? 'turnero' : 'web' };
+}
+
+// ── Integración con Nifty (embudo del cliente) ───────────
+// Cada turno nuevo o que cambia se manda a Nifty, firmado con la clave del cliente, sin datos de la clienta.
+// Se envía fuera del bloqueo (server/index.js cada minuto): niftyBatch arma el lote y niftyDone anota el resultado.
+const NIFTY_STATUS = { pending_payment: 'pendiente', pending_transfer: 'pendiente', confirmed: 'confirmado', attention: 'confirmado', completed: 'realizado', cancelled: 'cancelado', expired: 'vencido', no_show: 'no_vino' };
+const niftySig = (b) => [b.status, b.start, b.price, b.deposit_paid, b.service_name].join('|');
+function niftyTurno(st, env, b) {
+  const s = st.services.find((x) => x.id === b.service_id);
+  return { codigo: b.code, estado: NIFTY_STATUS[b.status] || 'pendiente', servicio: b.service_name, categoria: s?.category || '', fecha: b.start.slice(0, 10), hora: b.start.slice(11),
+    reservado: msToLocal(Date.parse(b.created_at)) + ':00', precio: Number(b.price) || 0, sena: Number(b.deposit_paid) || 0,
+    canal: b.attr?.canal || 'Otro', fuente: b.attr?.fuente || '', campania: b.attr?.campania || '', origen: b.source === 'panel' ? 'panel' : b.attr?.pagina || 'web' };
+}
+const niftyOn = (st) => { const N = st.integrations?.nifty; return !!(N && N.enabled && N.url && N.secret); };
+/** Lote de turnos para mandar (hasta 100), o null si no hay nada o todavía no toca reintentar. */
+export function niftyBatch(st, env) {
+  ensure(st);
+  const N = st.integrations.nifty;
+  if (!niftyOn(st) || env.now() < (N.retry_at || 0)) return null;
+  const desde = new Date(env.now() - 400 * 864e5).toISOString();
+  const list = st.bookings.filter((b) => b.created_at >= desde && b.nifty_sig !== niftySig(b)).slice(0, 100);
+  if (!list.length) return null;
+  return { url: N.url, secret: N.secret, body: JSON.stringify({ turnos: list.map((b) => niftyTurno(st, env, b)) }), sent: list.map((b) => [b.id, niftySig(b)]) };
+}
+/** Anota el resultado de un envío: si salió bien, esos turnos quedan al día; si no, reintenta más tarde (hasta 1 hora). */
+export function niftyDone(st, env, job, res) {
+  ensure(st);
+  const N = st.integrations.nifty;
+  if (res.ok) {
+    for (const [id, sig] of job.sent) { const b = st.bookings.find((x) => x.id === id); if (b) b.nifty_sig = sig; }
+    Object.assign(N, { sent: (N.sent || 0) + job.sent.length, last_ok: iso(env), last_error: '', fails: 0, retry_at: 0 });
+  } else {
+    N.fails = (N.fails || 0) + 1;
+    Object.assign(N, { last_error: `${new Date(env.now()).toISOString().slice(0, 16).replace('T', ' ')} · ${res.error || 'Nifty no respondió'}`, retry_at: env.now() + Math.min(60, 2 ** Math.min(N.fails, 6)) * 60e3 });
+  }
+  return { save: true };
+}
+function niftyView(st, env) {
+  const N = st.integrations.nifty, desde = new Date(env.now() - 400 * 864e5).toISOString();
+  return { enabled: !!N.enabled, url: N.url, has_secret: !!N.secret, sent: N.sent || 0, last_ok: N.last_ok, last_error: N.last_error,
+    pending: N.enabled ? st.bookings.filter((b) => b.created_at >= desde && b.nifty_sig !== niftySig(b)).length : 0, can_send: !!env.niftySend };
+}
+async function niftyRoute(st, env, method, A, body, staff) {
+  needAdmin(staff);
+  const N = st.integrations.nifty;
+  if (method === 'GET') return niftyView(st, env);
+  if (method === 'PUT') {
+    if (body.url !== undefined) {
+      const u = String(body.url || '').trim();
+      if (u && !/^https:\/\/[^\s]+$/.test(u) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(u)) fail(422, 'La dirección tiene que empezar con https://');
+      N.url = u;
+    }
+    if (body.secret) { const k = String(body.secret).trim(); if (k.length < 20) fail(422, 'Revisá la clave: es la que te dio Nifty (empieza con nft_).'); N.secret = k; }
+    if (body.enabled !== undefined) N.enabled = !!body.enabled;
+    if (N.enabled && (!N.url || !N.secret)) fail(422, 'Para activarla cargá la dirección y la clave que te da Nifty.');
+    Object.assign(N, { fails: 0, retry_at: 0 });
+    audit(st, env, staff, `Cambió la integración con Nifty (${N.enabled ? 'activa' : 'apagada'})`);
+    return niftyView(st, env);
+  }
+  if (method === 'POST' && A[1] === 'test') {
+    if (!N.url || !N.secret) fail(422, 'Cargá la dirección y la clave primero.');
+    if (!env.niftySend) fail(501, 'En la vista previa no se envía nada a Nifty.');
+    const r = await env.niftySend(N.url, N.secret, JSON.stringify({ turnos: [], prueba: true }));
+    if (!r.ok) fail(502, `Nifty respondió: ${r.error}`);
+    N.last_error = '';
+    return { ok: true, ...niftyView(st, env) };
+  }
+  fail(404, 'No existe esa ruta.');
+}
+
 // ── Router ───────────────────────────────────────────────
 /**
  * req: { method, path, query, body, staff } · devuelve { status, body, session? }
@@ -1186,9 +1265,16 @@ export async function handle(st, env, req) {
     if (method === 'POST' && seg[2] === 'transfer-sent') {
       const list = groupOf(st, b).filter((x) => x.status === 'pending_transfer');
       if (!list.length) fail(409, 'Esta reserva no está esperando una transferencia.');
+      // La clienta sube el comprobante (foto o PDF): queda en el turno para que el equipo lo verifique.
+      if (body.comprobante) {
+        if (!env.saveImage) fail(501, 'Este servidor no puede guardar archivos.');
+        const f = await env.saveImage(body.comprobante, 'comprobante', { pdf: true });
+        for (const x of list) { x.transfer_proof = f; x.history.push({ at: iso(env), text: 'La clienta subió el comprobante de la transferencia' }); }
+        if (list[0].transfer_notified) await mailTeam(st, env, 'staff_transfer', b, { notified: true, note: 'Subió el comprobante: está en el turno, en el panel.' });
+      }
       if (!list[0].transfer_notified) {
         for (const x of list) { x.transfer_notified = iso(env); x.history.push({ at: iso(env), text: 'La clienta avisó que ya transfirió' + (clean(body.note) ? `: ${clean(body.note, 200)}` : '') }); }
-        await mailTeam(st, env, 'staff_transfer', b, { notified: true, note: clean(body.note, 200) });
+        await mailTeam(st, env, 'staff_transfer', b, { notified: true, note: clean(body.note, 200) || (body.comprobante ? 'Subió el comprobante: está en el turno, en el panel.' : '') });
       }
       return ok({ booking: publicBooking(st, env, b) });
     }
@@ -1355,6 +1441,7 @@ export async function handle(st, env, req) {
   if (A[0] === 'clients' && method === 'GET' && !A[1]) return ok(clients(st, env, q));
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'GET') return ok(clientDetail(st, env, q.key));
   if (A[0] === 'cash') return ok(await cashRoute(st, env, method, A, q, body, staff));
+  if (A[0] === 'nifty') return ok(await niftyRoute(st, env, method, A, body, staff));
   if (A[0] === 'pnl' && method === 'GET') { needAdmin(staff); return ok(profitAndLoss(st, env, Math.min(36, Math.max(1, Number(q.months) || 12)))); }
   if (A[0] === 'clients' && method === 'POST' && !A[1]) { const r = createClient(st, env, body, staff); audit(st, env, staff, `Cargó a la clienta ${r.client.name}`); return ok(r); }
   if (A[0] === 'clients' && A[1] === 'photos' && method === 'POST') { const r = await addClientPhoto(st, env, body, staff); audit(st, env, staff, `Sumó fotos de antes y después a ${r.client.name}`); return ok(r); }

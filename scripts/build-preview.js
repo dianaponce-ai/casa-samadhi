@@ -82,5 +82,8 @@ ${page.replace('<meta name="claude:viewport-fit-sides" content="cover">\n', '').
   cpSync(path.join(ROOT, 'public/media'), path.join(path.dirname(out), 'media'), { recursive: true });
   // El turnero en su propia dirección: /turnos (Vercel lo sirve sin la extensión, con cleanUrls).
   writeFileSync(path.join(path.dirname(out), 'turnos.html'), readFileSync(out, 'utf8').replace(/<title>[^<]*<\/title>/, '<title>Reservá tu turno · Casa Samadhi</title>'));
+  // Páginas de gracias (/gracias-turno y /gracias-comprobante)
+  writeFileSync(path.join(path.dirname(out), 'gracias-turno.html'), readFileSync(out, 'utf8').replace(/<title>[^<]*<\/title>/, '<title>¡Gracias por reservar! · Casa Samadhi</title>'));
+  writeFileSync(path.join(path.dirname(out), 'gracias-comprobante.html'), readFileSync(out, 'utf8').replace(/<title>[^<]*<\/title>/, '<title>¡Gracias! Recibimos tu comprobante · Casa Samadhi</title>'));
 } else writeFileSync(out, page);
 console.log(`${out} · ${(page.length / 1024).toFixed(0)} KB`);
