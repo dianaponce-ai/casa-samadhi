@@ -43,8 +43,8 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('o
 const SLIDES = [
   { img: 'media/headspa-ritual.webp', pos: 'center 62%', eyebrow: 'Head spa', title: 'Un ritual esencial', sub: 'Agua tibia, aromas y manos que saben. Una hora solo para vos.', cta: ['Reservar', 'book:ritual-esencial'], cta2: ['Ver rituales', '#rituales'] },
   { img: 'media/camilla.webp', pos: 'center 55%', eyebrow: 'Masajes', title: 'Soltá el cuerpo', sub: 'Masoterapia relajante con pindas herbales calientes y sonidos de cuencos.', cta: ['Reservar', 'book:masoterapia-relajante'] },
-  { img: 'media/manicuria-lampara.webp', pos: '84% 60%', eyebrow: 'Manicuría', title: 'Tu momento, tu lugar', sub: 'Con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
-  { img: 'media/cafeteria.webp', eyebrow: 'Cafetería & eventos', title: 'Café, spa & momentos', sub: 'Meriendas, talleres y encuentros en Calle 47 N° 679.', cta: ['Conocé la casa', '#cafe'] },
+  { img: 'media/manicuria-lampara.webp', pos: '84% 60%', eyebrow: 'Manicuría & pedicuría', title: 'Tu momento, tu lugar', sub: 'En el salón de arriba, con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
+  { img: 'media/cafeteria.webp', eyebrow: 'Cafetería & eventos', title: 'Café, spa & momentos', sub: 'Cafetería en planta baja, eventos en el patio y la terraza para tus festejos.', cta: ['Conocé la casa', '#cafe'] },
 ];
 const hero = { i: 0, n: 0, timer: null, dur: 7000, busy: false, py: 0 };
 function renderHero() {
@@ -172,8 +172,10 @@ function renderSections() {
     $('#spaceIntro').textContent = spCat.intro || '';
     $('#spaceShort').textContent = sp.short || '';
     $('#spaceList').innerHTML = (sp.includes || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    // Sin foto cargada (la terraza todavía no tiene) la sección se muestra solo con el texto.
+    $('#alquiler').classList.toggle('no-photo', !sp.image);
     if (sp.image) $('#spaceImg').src = MEDIA(sp.image);
-    $('#spaceWa').href = wa(svcWa(sp), `Hola! Quiero consultar por el ${sp.name.toLowerCase()} de Casa Samadhi para una actividad. ¿Qué fechas tienen disponibles?`);
+    $('#spaceWa').href = wa(svcWa(sp), `Hola! Quiero consultar por el ${sp.name.toLowerCase()} de Casa Samadhi para un evento. ¿Qué fechas tienen disponibles?`);
   }
   $('#therList').innerHTML = ther.map((s) => `<article class="ther">
     ${s.image ? `<div class="ph"><img src="${MEDIA(s.image)}" alt="${esc(s.name)}" loading="lazy"></div>` : ''}
@@ -204,7 +206,7 @@ function renderSections() {
     `<li><a href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a></li>`,
   ].join('');
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>
-    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><a href="#alquiler">Alquiler del espacio</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
+    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría &amp; pedicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><a href="#alquiler">Alquiler de la terraza</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
     <hr><a class="sm" href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a><a class="sm" href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a><a class="sm" href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram</a>`;
   if (!SITE.giftcards.enabled) { $('#giftcards').hidden = true; $$('[data-gift]').forEach((b) => (b.hidden = true)); }
   const g = SITE.services.find((s) => s.slug === 'ritual-esencial');

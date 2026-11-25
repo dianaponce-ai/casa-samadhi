@@ -213,6 +213,8 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 .rent-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 15px; width: 100%; }
 .rent-list li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; padding-top: 8px; border-top: 1px solid var(--linea); }
 .rent-list li::before { content: "·"; color: var(--dorado); font-size: 22px; line-height: .8; }
+.rent.no-photo .rent-grid { grid-template-columns: 1fr; max-width: 720px; }
+.rent.no-photo .rent-photos { display: none; }
 .rent-photos { display: grid; grid-template-columns: 1fr; gap: 14px; position: relative; }
 .rent-photos img { width: 100%; object-fit: cover; display: block; }
 .rent-photos img:first-child { aspect-ratio: 4 / 5; object-position: center 78%; width: 78%; justify-self: end; }
@@ -243,6 +245,11 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 
 /* ── Espacio ──────────────────────────────────── */
 .space { padding-block: 100px; background: var(--papel); border-top: 1px solid var(--linea); }
+.floors { list-style: none; margin: 0 0 36px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--linea); border-bottom: 1px solid var(--linea); }
+.floors li { padding: 16px 14px; font-size: 14px; color: var(--suave); text-align: center; }
+.floors li + li { border-left: 1px solid var(--linea); }
+.floors b { display: block; font-family: var(--serif); font-size: 20px; font-weight: 500; color: var(--tinta, inherit); margin-bottom: 2px; }
+@media (max-width: 800px) { .floors { grid-template-columns: 1fr 1fr; } .floors li { border-left: 0 !important; border-top: 1px solid var(--linea); } .floors li:nth-child(-n+2) { border-top: 0; } .floors li:nth-child(even) { border-left: 1px solid var(--linea) !important; } .floors li:last-child { grid-column: span 2; } }
 .mosaic { display: grid; grid-template-columns: 1.3fr 1fr 1fr; grid-template-rows: 280px 280px; gap: 12px; }
 .mosaic img { width: 100%; height: 100%; object-fit: cover; }
 .mosaic img:first-child { grid-row: span 2; }

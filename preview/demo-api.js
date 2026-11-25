@@ -59,7 +59,7 @@ function seedDemo() {
     }
   }
   // Gift cards de ejemplo
-  const gifts = [['Martina Herrera', 'Ritual esencial', 55000, 'Para tu cumple, ¡a relajarse!'], ['Ignacio Paz', '', 80000, ''], ['Laura Castro', 'Ritual profundo con pindas', 80000, 'Gracias por todo, mamá']];
+  const gifts = [['Martina Herrera', 'Ritual esencial', 60000, 'Para tu cumple, ¡a relajarse!'], ['Ignacio Paz', '', 90000, ''], ['Laura Castro', 'Ritual profundo con pindas', 90000, 'Gracias por todo, mamá']];
   gifts.forEach(([buyer, svc, amount, msg], i) => {
     const created = new Date(Date.now() - (5 + i * 7) * 864e5).toISOString();
     st.giftcards.push({ id: ++st.ids.gift, code: `CS-DEMO-${i + 1}${'ABC'[i]}${'XYZ'[i]}2`, token: 'demo' + i + Math.random().toString(36).slice(2), amount, balance: i === 1 ? 30000 : amount, service_id: null, service_name: svc, buyer_name: buyer, buyer_email: buyer.toLowerCase().replace(' ', '.') + '@ejemplo.com', to_name: '', to_email: '', message: msg, send_to_recipient: false,
@@ -87,8 +87,8 @@ function seedDemo() {
   st.crm = st.crm || {};
   st.crm[cl.email] = { notes: 'Viene los sábados a la mañana. Le encantó el ritual esencial; ofrecerle el profundo con pindas (tiene una gift card para usarlo). Recomendó la casa a dos amigas.', preferences: 'Presión suave en el cuello · aceite de lavanda · té verde sin azúcar', birthday: `1990-${today.slice(5, 7)}-${String(Math.min(28, Number(today.slice(8, 10)) + 9)).padStart(2, '0')}`, tags: ['Frecuente', 'Cumpleaños'], updated_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_by: 'Recepción (prueba)' };
   const gc = new Date(Date.now() - 20 * 864e5).toISOString();
-  st.giftcards.push({ id: ++st.ids.gift, code: 'CS-LUCI-A26X', token: 'clgift' + Math.random().toString(36).slice(2), amount: 80000, balance: 80000, service_id: null, service_name: 'Ritual profundo con pindas', buyer_name: 'Carolina Gómez', buyer_email: 'carolina.gomez@ejemplo.com', to_name: cl.name, to_email: cl.email, message: '¡Feliz cumple, amiga! Te lo merecés.', send_to_recipient: true,
-    status: 'active', source: 'web', created_at: gc, paid_at: gc, expires_at: new Date(Date.now() + 160 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-2', history: [{ at: gc, amount: 80000, note: 'Gift card de ejemplo' }] });
+  st.giftcards.push({ id: ++st.ids.gift, code: 'CS-LUCI-A26X', token: 'clgift' + Math.random().toString(36).slice(2), amount: 90000, balance: 90000, service_id: null, service_name: 'Ritual profundo con pindas', buyer_name: 'Carolina Gómez', buyer_email: 'carolina.gomez@ejemplo.com', to_name: cl.name, to_email: cl.email, message: '¡Feliz cumple, amiga! Te lo merecés.', send_to_recipient: true,
+    status: 'active', source: 'web', created_at: gc, paid_at: gc, expires_at: new Date(Date.now() + 160 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-2', history: [{ at: gc, amount: 90000, note: 'Gift card de ejemplo' }] });
   // Cada turno de ejemplo queda a nombre de una profesional que hace ese servicio (y está libre).
   const pros = st.staff.filter((u) => u.role === 'pro');
   for (const b of [...st.bookings].sort((a, c) => a.start.localeCompare(c.start))) {
@@ -105,7 +105,7 @@ function seedDemo() {
   const p1 = pros.find((p) => p.services.includes(s1.id));
   const cr = new Date(Date.now() - 2 * 3600e3).toISOString();
   st.bookings.push({ id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: 'tr' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2), group: null, service_id: s1.id, service_name: s1.name, resource: s1.resource,
-    pro_id: p1?.id || null, pro_name: p1?.name || '', start: `${t} ${tt}`, duration: s1.duration, price: s1.price, deposit: 16500, deposit_due: 16500, deposit_paid: 0, gift_id: null, gift_code: '', gift_applied: 0,
+    pro_id: p1?.id || null, pro_name: p1?.name || '', start: `${t} ${tt}`, duration: s1.duration, price: s1.price, deposit: 18000, deposit_due: 18000, deposit_paid: 0, gift_id: null, gift_code: '', gift_applied: 0,
     name: 'Martina Herrera', email: 'martina.herrera@ejemplo.com', phone: '221 555-6611', notes: '', status: 'pending_transfer', source: 'web', created_at: cr, pay_method: 'transfer', transfer_notified: new Date(Date.now() - 3600e3).toISOString(),
     hold_until: new Date(Date.now() + 10 * 3600e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: cr, text: 'Reservado: seña de $ 16.500 por transferencia, a verificar' }, { at: new Date(Date.now() - 3600e3).toISOString(), text: 'La clienta avisó que ya transfirió' }] });
   // Historial de cambios de ejemplo
