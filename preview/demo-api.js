@@ -81,7 +81,7 @@ function seedDemo() {
   let past = C.addDays(today, -12); while (new Date(past + 'T12:00:00Z').getUTCDay() === 0) past = C.addDays(past, -1);
   const notSunday = (d) => { while (new Date(d + 'T12:00:00Z').getUTCDay() === 0) d = C.addDays(d, -1); return d; };
   mk('ritual-esencial', notSunday(C.addDays(today, -96)), 'completed', 'Primera vez en un head spa. Cuero cabelludo sensible.');
-  mk('masoterapia-relajante', notSunday(C.addDays(today, -61)), 'completed', 'Contractura en el cuello, presión suave por favor.');
+  mk('ritual-profundo', notSunday(C.addDays(today, -61)), 'completed', 'Contractura en el cuello, presión suave por favor.');
   mk('ritual-esencial', notSunday(C.addDays(today, -34)), 'completed', 'Contractura en el cuello, presión suave por favor.');
   mk('ritual-esencial', up, 'confirmed', 'Contractura en el cuello, presión suave por favor.');
   mk('esmaltado-semipermanente', past, 'completed');

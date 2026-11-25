@@ -43,7 +43,7 @@ Sin `MP_ACCESS_TOKEN` los pagos son simulados; sin `SMTP_URL` los emails no sale
 
 ## Para revisar antes de abrir
 - Horarios de atención (vienen de lunes a sábado de 10 a 19): Panel → Horarios y bloqueos.
-- Duraciones de los servicios que no figuraban en Instagram (masoterapia y manicuría): Panel → Servicios.
+- Duraciones de los servicios que no figuraban en Instagram (manicuría): Panel → Servicios.
 - Porcentaje de seña (30%) y política de cancelación (24 h): Panel → Configuración.
 - Razón social y CUIT en los términos: Panel → Textos de la web.
 - Alias o CBU para las transferencias: Panel → Configuración → Medios de pago (sin eso, la web solo ofrece Mercado Pago).

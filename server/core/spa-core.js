@@ -113,6 +113,22 @@ const MIGRATIONS = {
     }
   },
   'profesionales-2026-11': (st) => addDefaultPros(st, new Date().toISOString()),
+  'trabajos-2026-11': (st) => {
+    // Trabajos de ejemplo (antes y después) para los servicios de manicuría que todavía no tienen.
+    if (!st.settings.site.worksBefore) st.settings.site.worksBefore = SITE.worksBefore;
+    for (const def of SERVICES.filter((x) => x.works)) {
+      const s = st.services.find((x) => x.slug === def.slug);
+      if (s && !s.works?.length) s.works = structuredClone(def.works);
+    }
+  },
+  'sin-masoterapia-2026-11': (st) => {
+    // La masoterapia relajante deja de ofrecerse: se saca (o se oculta si tiene turnos por delante).
+    const s = st.services.find((x) => x.slug === 'masoterapia-relajante');
+    if (!s) return;
+    if (st.bookings.some((b) => b.service_id === s.id && ACTIVE.includes(b.status))) { s.visible = false; return; }
+    st.services = st.services.filter((x) => x.id !== s.id);
+    for (const p of prosAll(st)) if (p.services) p.services = p.services.filter((id) => id !== s.id);
+  },
 };
 /** Suma a las profesionales de la casa (Trinidad y Belén) con los servicios de su sección, si todavía no están. */
 function addDefaultPros(st, at) {

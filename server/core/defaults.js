@@ -39,9 +39,6 @@ export const SERVICES = [
       'Sonidos de cuenco — Frecuencias que armonizan tu mente y te conectan con la calma.',
       'Aromaterapia — Esencias naturales que relajan, revitalizan y renuevan.',
     ] },
-  { slug: 'masoterapia-relajante', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Masoterapia relajante', tag: 'Masaje corporal', duration: 60, price: 45000, image: 'media/camilla.webp', featured: true,
-    short: 'Perfecto para liberar tensión física. No incluye head spa.',
-    includes: ['Masaje relajante corporal', 'Aromaterapia', 'Pindas herbales calientes', 'Sonidos de cuencos'] },
 
   // works: trabajos de ejemplo (antes y después). El "antes" es el mismo para todos: SITE.worksBefore.
   // Manicuría: carta de noviembre 2026. `price` es el precio en efectivo (sobre ese se calcula la seña); `price_transfer`, con transferencia.

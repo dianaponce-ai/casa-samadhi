@@ -313,7 +313,7 @@ test('profesionales de la casa: Trinidad en head spa y Belén en manicuría, tam
   await call(old, env, 'GET', '/api/site');
   await call(old, env, 'GET', '/api/site');
   assert.equal(old.staff.filter((u) => u.role === 'pro').length, 2);
-  assert.ok(old.staff.find((u) => u.name === 'Trinidad').services.length === 3);
+  assert.ok(old.staff.find((u) => u.name === 'Trinidad').services.length === 2);
 });
 
 test('trabajos (antes y después): ejemplos en manicuría, se suben, se ordenan y se borran', async () => {
@@ -337,4 +337,19 @@ test('trabajos (antes y después): ejemplos en manicuría, se suben, se ordenan 
   assert.deepEqual(env.deleted, ['uploads/despues-27.webp']);
   const before = await call(st, env, 'PUT', '/api/admin/works-before', { image: img }, admin);
   assert.equal(st.settings.site.worksBefore, before.worksBefore);
+});
+
+test('migraciones: trabajos de ejemplo y sin masoterapia en estados guardados', async () => {
+  const st = bare(), env = makeEnv();
+  // Estado viejo: sin foto de antes, sin trabajos y con la masoterapia.
+  delete st.settings.site.worksBefore;
+  for (const s of st.services) s.works = [];
+  st.services.push({ id: ++st.ids.service, slug: 'masoterapia-relajante', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Masoterapia relajante', duration: 60, price: 45000, visible: true, position: 99, works: [] });
+  st.meta.migrations = st.meta.migrations.filter((k) => !['trabajos-2026-11', 'sin-masoterapia-2026-11'].includes(k));
+  const site = await call(st, env, 'GET', '/api/site');
+  assert.ok(site.site.worksBefore.endsWith('antes.webp'));
+  assert.equal(site.services.find((s) => s.slug === 'esmaltado-semipermanente').works.length, 2);
+  assert.ok(!st.services.some((s) => s.slug === 'masoterapia-relajante'));
+  assert.ok(!seedState().services.some((s) => s.slug === 'masoterapia-relajante'));
+  assert.ok(['trabajos-2026-11', 'sin-masoterapia-2026-11'].every((k) => st.meta.migrations.includes(k)));
 });
