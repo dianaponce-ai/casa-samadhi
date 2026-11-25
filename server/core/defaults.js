@@ -61,6 +61,12 @@ export const SERVICES = [
     includes: ['Terraza al aire libre', 'Cumpleaños, celebraciones y encuentros', 'Cafetería de la casa en planta baja', 'Calle 47 N° 679, La Plata'] },
 ];
 
+// Profesionales que atienden los turnos. La comisión y el acceso al panel se completan en Panel → Profesionales.
+export const PROS = [
+  { name: 'Trinidad', specialty: 'Head spa y masajes', categories: ['rituales'] },
+  { name: 'Belén', specialty: 'Manicuría y pedicuría', categories: ['manicuria'] },
+];
+
 export const SITE = {
   name: 'Casa Samadhi',
   kicker: 'Café & Spa',
