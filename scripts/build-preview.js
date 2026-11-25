@@ -69,7 +69,7 @@ if (standalone) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Casa Samadhi: head spa, masajes, manicuría, terapias holísticas y cafetería en La Plata.">
+<meta name="description" content="Casa Samadhi: head spa, masajes, manicuría, pedicuría y cafetería en La Plata.">
 <meta name="theme-color" content="#f4efe6">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%234c5a3d'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' fill='%23f4efe6' text-anchor='middle'%3ECS%3C/text%3E%3C/svg%3E">

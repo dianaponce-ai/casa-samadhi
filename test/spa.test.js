@@ -353,3 +353,30 @@ test('migraciones: trabajos de ejemplo y sin masoterapia en estados guardados', 
   assert.ok(!seedState().services.some((s) => s.slug === 'masoterapia-relajante'));
   assert.ok(['trabajos-2026-11', 'sin-masoterapia-2026-11'].every((k) => st.meta.migrations.includes(k)));
 });
+
+test('sin tarot ni sección Terapias, también en estados guardados', async () => {
+  assert.ok(!seedState().services.some((s) => s.slug === 'tarot-y-oraculo'));
+  assert.ok(!seedState().settings.categories.some((c) => c.key === 'terapias'));
+  const st = bare(), env = makeEnv();
+  st.settings.categories.push({ key: 'terapias', name: 'Terapias', title: 'Terapias holísticas', intro: '' });
+  st.services.push({ id: ++st.ids.service, slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', duration: 45, price: null, visible: true, position: 50 });
+  st.settings.site.announcement = 'Head spa · Manicuría · Terapias · Cafetería — Calle 47 N° 679, La Plata';
+  st.meta.migrations = st.meta.migrations.filter((k) => k !== 'sin-tarot-2026-11');
+  const site = await call(st, env, 'GET', '/api/site');
+  assert.ok(!site.services.some((s) => s.slug === 'tarot-y-oraculo'));
+  assert.ok(!site.categories.some((c) => c.key === 'terapias'));
+  assert.ok(!site.site.announcement.includes('Terapias'));
+});
+
+test('un solo WhatsApp en toda la web', async () => {
+  const st = bare(), env = makeEnv();
+  Object.assign(st.settings.site, { ritualsWhatsapp: '11 4928-2503', eventsWhatsapp: '221 000-0000' });
+  st.services[0].whatsapp = '11 1111-1111';
+  st.meta.migrations = st.meta.migrations.filter((k) => k !== 'un-whatsapp-2026-11');
+  const site = await call(st, env, 'GET', '/api/site');
+  assert.equal(site.site.ritualsWhatsapp, '');
+  assert.equal(site.site.eventsWhatsapp, '');
+  assert.ok(site.services.every((s) => s.whatsapp === undefined));
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: st.services[0].id, date: '2026-11-04', time: '10:00', ...who });
+  assert.equal(r.booking.whatsapp, st.settings.site.whatsapp);
+});

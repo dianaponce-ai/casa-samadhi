@@ -121,6 +121,22 @@ const MIGRATIONS = {
       if (s && !s.works?.length) s.works = structuredClone(def.works);
     }
   },
+  'un-whatsapp-2026-11': (st) => {
+    // Un solo WhatsApp en toda la web: se dejan de usar el de head spa, el de eventos y los propios de cada servicio.
+    Object.assign(st.settings.site, { ritualsWhatsapp: '', eventsWhatsapp: '' });
+    for (const s of st.services) s.whatsapp = '';
+  },
+  'sin-tarot-2026-11': (st) => {
+    // Tarot y oráculo deja de ofrecerse, y con él la sección Terapias (era su único servicio).
+    const s = st.services.find((x) => x.slug === 'tarot-y-oraculo');
+    if (s) {
+      if (st.bookings.some((b) => b.service_id === s.id && ACTIVE.includes(b.status))) s.visible = false;
+      else { st.services = st.services.filter((x) => x.id !== s.id); for (const p of prosAll(st)) if (p.services) p.services = p.services.filter((id) => id !== s.id); }
+    }
+    if (!st.services.some((x) => x.category === 'terapias')) st.settings.categories = st.settings.categories.filter((c) => c.key !== 'terapias');
+    const site = st.settings.site;
+    if (site.announcement === 'Head spa · Manicuría · Terapias · Cafetería — Calle 47 N° 679, La Plata') site.announcement = SITE.announcement;
+  },
   'sin-masoterapia-2026-11': (st) => {
     // La masoterapia relajante deja de ofrecerse: se saca (o se oculta si tiene turnos por delante).
     const s = st.services.find((x) => x.slug === 'masoterapia-relajante');
@@ -145,10 +161,9 @@ function migrate(st) {
   st.meta.migrations = st.meta.migrations || [];
   for (const [k, fn] of Object.entries(MIGRATIONS)) if (!st.meta.migrations.includes(k)) { fn(st); st.meta.migrations.push(k); }
 }
-/** WhatsApp que atiende un servicio: el propio, el de head spa y masajes, o el general. */
-export function serviceWhatsapp(st, s) {
-  const site = st.settings.site;
-  return (s && s.whatsapp) || (s && s.category === 'rituales' && site.ritualsWhatsapp) || (s && s.category === 'espacio' && site.eventsWhatsapp) || site.whatsapp;
+/** WhatsApp de un servicio: hay un solo número para toda la casa (el del botón de WhatsApp). */
+export function serviceWhatsapp(st) {
+  return st.settings.site.whatsapp;
 }
 export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit'];
 export const ROLES = { admin: 'Administración', staff: 'Recepción', pro: 'Profesional' };
@@ -276,7 +291,7 @@ export function availability(st, env, serviceId, from, days = 14, pro = null) {
 const MAX_WORKS_PUBLIC = 8; // la web muestra hasta 8 (el celular, hasta 4)
 export const MAX_WORKS = 24;
 const publicService = (st, s) => ({ id: s.id, slug: s.slug, category: s.category, name: s.name, tag: s.tag, short: s.short, includes: s.includes, duration: s.duration, price: s.price, price_transfer: s.price_transfer ?? null, mode: s.mode, image: s.image,
-  works: (s.works || []).slice(0, MAX_WORKS_PUBLIC).map((w) => ({ id: w.id, after: w.after, before: w.before || '' })), featured: !!s.featured, whatsapp: s.whatsapp || '',
+  works: (s.works || []).slice(0, MAX_WORKS_PUBLIC).map((w) => ({ id: w.id, after: w.after, before: w.before || '' })), featured: !!s.featured,
   pros: prosFor(st, s).map((p) => ({ id: p.id, name: p.name })) });
 const transferOn = (P) => !!(P.transferEnabled && (P.alias || P.cbu));
 const mpOn = (P) => P.mpEnabled !== false;
@@ -715,7 +730,7 @@ async function proInput(st, env, body, prev = null) {
 }
 function serviceInput(st, body, prev = {}) {
   const s = { ...prev };
-  for (const k of ['name', 'tag', 'short', 'image', 'whatsapp']) if (body[k] !== undefined) s[k] = clean(body[k], k === 'short' ? 600 : 200);
+  for (const k of ['name', 'tag', 'short', 'image']) if (body[k] !== undefined) s[k] = clean(body[k], k === 'short' ? 600 : 200);
   if (body.category !== undefined) { if (!st.settings.categories.some((c) => c.key === body.category)) fail(422, 'Elegí una sección.'); s.category = body.category; }
   if (body.resource !== undefined) { if (!st.settings.resources.some((r) => r.key === body.resource)) fail(422, 'Elegí dónde se hace.'); s.resource = body.resource; }
   if (body.mode !== undefined) { if (!['online', 'whatsapp', 'menu'].includes(body.mode)) fail(422, 'Modo inválido.'); s.mode = body.mode; }

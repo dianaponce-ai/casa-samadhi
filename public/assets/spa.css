@@ -119,7 +119,7 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 .ornament { width: 190px; height: auto; opacity: .9; }
 .lead { font-family: var(--serif); font-size: clamp(28px, 3.4vw, 44px); line-height: 1.15; margin: 0; }
 .lead span { font-style: italic; color: var(--suave); }
-.pillar-row { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--linea); }
+.pillar-row { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--linea); }
 .pillar { display: grid; gap: 6px; padding: 26px 22px 6px; text-decoration: none; border-left: 1px solid var(--linea); transition: background .3s; }
 .pillar:first-child { border-left: 0; }
 .pillar:hover { background: var(--marfil); }
@@ -129,7 +129,7 @@ header.top.scrolled:hover, header.top.scrolled:focus-within { background: color-
 
 /* ── Rituales ─────────────────────────────────── */
 .rituals { padding-block: 100px 110px; }
-.ritual-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.ritual-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 400px)); justify-content: center; gap: 28px; }
 .ritual { display: flex; flex-direction: column; background: var(--papel); border: 1px solid var(--linea); min-width: 0; }
 .ritual .ph { aspect-ratio: 4 / 5; overflow: hidden; background: var(--arena); position: relative; }
 .ritual .ph img { width: 100%; height: 100%; object-fit: cover; transition: transform 1.4s var(--ease); }

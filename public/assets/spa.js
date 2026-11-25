@@ -133,7 +133,7 @@ function onScroll() {
 
 // ── Secciones ────────────────────────────────────────────
 // WhatsApp que atiende cada servicio: el propio, el de head spa y masajes, o el general del local.
-const svcWa = (s) => (s && s.whatsapp) || (s && s.category === 'rituales' && SITE.site.ritualsWhatsapp) || (s && s.category === 'espacio' && SITE.site.eventsWhatsapp) || SITE.site.whatsapp;
+const svcWa = () => SITE.site.whatsapp; // un solo WhatsApp para toda la casa
 const svcBySlug = (slug) => SITE.services.find((s) => s.slug === slug);
 const cat = (k) => SITE.categories.find((c) => c.key === k) || {};
 function actionsFor(s) {
@@ -142,11 +142,12 @@ function actionsFor(s) {
 }
 function renderSections() {
   const S = SITE.site;
-  $('#announce').textContent = S.announcement || 'Head spa · Manicuría · Terapias · Cafetería';
+  $('#announce').textContent = S.announcement || 'Head spa · Manicuría · Cafetería';
   $('#year').textContent = new Date().getFullYear();
-  $('#ritIntro').innerHTML = esc(cat('rituales').intro || '') + (S.ritualsWhatsapp ? ` <a href="${wa(S.ritualsWhatsapp, 'Hola! Quiero consultar por head spa y masajes.')}" target="_blank" rel="noopener">Consultas: WhatsApp ${esc(S.ritualsWhatsapp)}</a>` : '');
+  $('#ritIntro').textContent = cat('rituales').intro || '';
   $('#maniIntro').textContent = cat('manicuria').intro || '';
   $('#terIntro').textContent = cat('terapias').intro || '';
+  if (cat('terapias').title) $('#terTitle').textContent = cat('terapias').title;
   const rit = SITE.services.filter((s) => s.category === 'rituales');
   $('#ritualList').innerHTML = rit.map((s) => `<article class="ritual">
     <div class="ph">${s.image ? `<img src="${MEDIA(s.image)}" alt="${esc(s.name)}" loading="lazy">` : ''}${s.tag ? `<span class="tag">${esc(s.tag)}</span>` : ''}</div>
@@ -165,6 +166,7 @@ function renderSections() {
       ? `<span class="pr" aria-label="Efectivo ${s.price ? fmt(s.price) : 'Consultar'}">${s.price ? fmt(s.price) : 'Consultar'}</span><span class="pr" aria-label="Transferencia ${fmt(s.price_transfer)}">${fmt(s.price_transfer)}</span>`
       : `<span class="pr${twoPrices ? ' span' : ''}">${s.price ? fmt(s.price) : 'Consultar'}</span>`}</li>`).join('');
   const ther = SITE.services.filter((s) => s.category === 'terapias' || !['rituales', 'manicuria', 'espacio'].includes(s.category));
+  $('#terapias').hidden = !ther.length; // sin servicios, la sección no se muestra
   // Alquiler del espacio: sección propia con foto grande.
   const space = SITE.services.filter((s) => s.category === 'espacio');
   const sp = space[0], spCat = cat('espacio');
@@ -185,7 +187,7 @@ function renderSections() {
     <div class="body">${s.tag ? `<div class="tg">${esc(s.tag)}</div>` : ''}<h3>${esc(s.name)}</h3>${s.short ? `<p>${esc(s.short)}</p>` : ''}${s.price ? `<p>${fmt(s.price)}${s.duration ? ` · ${durTxt(s.duration)}` : ''}</p>` : ''}
     <div class="actions">${s.mode === 'online' ? `<button class="btn solid sm" data-book-svc="${s.id}">Reservar</button>` : actionsFor(s)}</div></div></article>`).join('');
   $('#events').innerHTML = SITE.events.map((e) => { const d = dayLabel(e.date); return `<div class="event"><div class="d">${d.d}<small>${MONTHS[d.m - 1]}</small></div><div><h4>${esc(e.title)}</h4><p>${esc(d.long)}${e.from ? ` · ${esc(e.from)}${e.to ? ` a ${esc(e.to)}` : ''} h` : ''}${e.price ? ` · ${fmt(e.price)}` : ''}</p>${e.description ? `<p>${esc(e.description)}</p>` : ''}<p><a href="${wa(S.whatsapp, `Hola! Quiero reservar un lugar para "${e.title}" (${d.long}).`)}" target="_blank" rel="noopener">Reservar mi lugar por WhatsApp →</a></p></div></div>`; }).join('');
-  $('#eventsWa').href = wa(S.eventsWhatsapp || S.whatsapp, 'Hola! Quiero consultar por un evento en Casa Samadhi.');
+  $('#eventsWa').href = wa(S.whatsapp, 'Hola! Quiero consultar por un evento en Casa Samadhi.');
   $('#faqList').innerHTML = SITE.faq.map((f, i) => `<details class="qa"${i === 0 ? ' open' : ''}><summary>${esc(f.q)}<i aria-hidden="true"></i></summary><div class="qa-a">${md(f.a)}</div></details>`).join('');
   const H = SITE.hours;
   const fmtW = (list) => (list?.length ? list.map((w) => `${w.from} a ${w.to}`).join(' y ') : 'Cerrado');
@@ -203,13 +205,12 @@ function renderSections() {
   $('#footContact').innerHTML = [
     `<li><a href="${maps}" target="_blank" rel="noopener">${esc(S.address)}<br>${esc(S.city)}</a></li>`,
     `<li><a href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp · ${esc(S.whatsapp)}</a></li>`,
-    S.ritualsWhatsapp ? `<li><a href="${wa(S.ritualsWhatsapp, 'Hola! Quiero consultar por head spa y masajes.')}" target="_blank" rel="noopener">Head spa y masajes · ${esc(S.ritualsWhatsapp)}</a></li>` : '',
     `<li><a href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram · @${esc(S.instagram)}</a></li>`,
     S.email ? `<li><a href="mailto:${esc(S.email)}">${esc(S.email)}</a></li>` : '',
     `<li><a href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a></li>`,
   ].join('');
   $('#mnav').innerHTML = `<div class="caps" style="color:var(--suave)">Menú</div>
-    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría &amp; pedicuría</a><a href="#terapias">Terapias</a><a href="#cafe">Cafetería &amp; eventos</a><a href="#alquiler">Alquiler de la terraza</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
+    <button data-book>Reservar turno</button><button data-account>Mi cuenta</button><a href="#rituales">Head spa &amp; masajes</a><a href="#manicuria">Manicuría &amp; pedicuría</a><a href="#cafe">Cafetería &amp; eventos</a><a href="#alquiler">Alquiler de la terraza</a><button data-gift>Gift cards</button><a href="#espacio">La casa</a><a href="#visita">Cómo llegar</a>
     <hr><a class="sm" href="${esc(S.storeUrl)}" target="_blank" rel="noopener">Tienda Samadhi Style ↗</a><a class="sm" href="${wa(S.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a><a class="sm" href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">Instagram</a>`;
   if (!SITE.giftcards.enabled) { $('#giftcards').hidden = true; $$('[data-gift]').forEach((b) => (b.hidden = true)); }
   const g = SITE.services.find((s) => s.slug === 'ritual-esencial');
@@ -246,7 +247,7 @@ function incIcon(t) {
   if (x.includes('secado')) return 'dryer';
   if (x.includes('infusi') || x.includes('café') || x.includes('cafe') || x.includes('merienda')) return 'cup';
   if (x.includes('pinda')) return 'pinda';
-  if (x.includes('oráculo') || x.includes('tarot')) return 'spark';
+  if (x.includes('oráculo')) return 'spark';
   if (x.includes('mano')) return 'hand';
   return 'leaf';
 }
@@ -424,7 +425,7 @@ function renderBooking(open = false) {
       : ACC ? `<div class="sel-sum welcome"><span class="n">Hola de nuevo, ${esc(ACC.customer.name.split(' ')[0])}</span>${lv ? `<span class="w">Tu última visita fue ${esc(lv.when)}: ${esc(lv.service_name)}.</span>` : '<span class="w">Tus datos ya están cargados para reservar.</span>'}${again && !bk.filter ? `<button class="btn sm" data-pick="${again.id}" style="justify-self:start;margin-top:6px">Repetir ${esc(again.name)}</button>` : ''}</div>` : '')
       + groups.map((g) => `<div class="svc-group"><div class="step-t grp">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="ic">${icon(svcIcon(s))}</span><span class="n">${esc(svcName(s))}</span><span class="p">${fmt(s.price)}${s.price_transfer ? `<small>Transf. ${fmt(s.price_transfer)}</small>` : ''}</span><span class="m">${durTxt(s.duration)} · Ver qué incluye</span></button>`).join('')}</div>`).join('')
       + (bk.filter ? `<p class="note" style="margin-top:16px"><button class="link-btn" data-allsvc>Ver todos los servicios</button></p>` : '')
-      + (waOnly.length && !adding ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero consultar por una terapia.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
+      + (waOnly.length && !adding ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero hacer una consulta.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
   } else if (bk.step === 2) {
     const s = bk.service;
     const day = bk.days.find((d) => d.date === bk.date);

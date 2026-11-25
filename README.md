@@ -1,11 +1,11 @@
 # Casa Samadhi · Café & Spa
 
-Web de Casa Samadhi (Calle 47 N° 679, La Plata): head spa, masajes, manicuría, terapias, cafetería y eventos.
+Web de Casa Samadhi (Calle 47 N° 679, La Plata): head spa, masajes, manicuría, pedicuría, cafetería y eventos.
 Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/samadhi-store), con un botón para ir de una a la otra.
 
 ## Qué hace
 - **Turnos online con seña**: la clienta elige servicio, día y horario libre, paga la seña con Mercado Pago y recibe la confirmación por email. Puede cancelar desde el link del email hasta 24 h antes.
-- **Por WhatsApp**: las terapias sin precio fijo (tarot y oráculo) se consultan con un botón que abre WhatsApp con el mensaje escrito.
+- **Por WhatsApp**: los servicios sin precio fijo (por ejemplo, el alquiler de la terraza) se consultan con un botón que abre WhatsApp con el mensaje escrito.
 - **Varios servicios en una reserva**: después de elegir el primero, "Agregar otro servicio" suma hasta 4 para el mismo día (por ejemplo head spa + manicuría), sin horarios superpuestos y con una sola seña.
 - **Seña por Mercado Pago o transferencia**: con Mercado Pago se confirma sola al acreditarse. Con transferencia la clienta ve el alias/CBU (en la web y por email), el turno queda guardado (12 h por defecto, nunca después de 1 h antes del turno), avisa "Ya transferí" y el equipo la confirma desde el Resumen o el turno; ahí le llega la confirmación a la clienta y el aviso a la profesional. Datos bancarios en Panel → Configuración → Medios de pago.
 - **Profesionales** (`/admin` → Profesionales, solo administración): ficha con datos personales, servicios que hace, acceso al panel y forma de pago (solo comisión, o básico + comisión). Los turnos se asignan solos a una profesional libre que haga el servicio (la clienta puede elegir con quién). Liquidación por mes: realizados, comisión ganada, básico, a cobrar y lo que viene. El porcentaje queda fijo en cada turno al realizarse.

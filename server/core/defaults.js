@@ -6,7 +6,6 @@
 export const CATEGORIES = [
   { key: 'rituales', name: 'Rituales', title: 'Head spa & masajes', intro: 'Un ritual para soltar el cuerpo, la cabeza y el día. Agua tibia, aromas, manos que saben y silencio.' },
   { key: 'manicuria', name: 'Manicuría', title: 'Manicuría y pedicuría', intro: 'En el salón de arriba. Todos los servicios incluyen café de cortesía, mensaje de oráculo y spa de manos.' },
-  { key: 'terapias', name: 'Terapias', title: 'Terapias holísticas', intro: 'Sesiones para armonizar cuerpo, mente y energía, con especialistas que se suman a la casa.' },
   { key: 'espacio', name: 'Alquiler de la terraza', title: 'Una terraza para tus eventos', intro: 'Casa Samadhi abre su terraza para celebraciones y encuentros.' },
 ];
 
@@ -53,9 +52,6 @@ export const SERVICES = [
   { slug: 'pedicuria', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Pedicuría', duration: 75, price: 32000, price_transfer: 34000 },
   { slug: 'retirado-de-esmalte', category: 'manicuria', resource: 'manicuria', mode: 'online', name: 'Retirado de esmalte', duration: 20, price: 5000 },
 
-  { slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', tag: 'Lecturas personalizadas', duration: 45, price: null, image: 'media/deco-cristal.webp',
-    short: 'Una lectura para hacerle una pregunta al tarot y recibir el mensaje del oráculo.' },
-
   // La terraza: todavía sin fotos (cuando estén, se eligen en Panel → Servicios).
   { slug: 'alquiler-del-espacio', category: 'espacio', resource: 'terapias', mode: 'whatsapp', name: 'Alquiler de la terraza', tag: 'Para eventos', duration: 0, price: null, image: '',
     short: 'La terraza de la casa se alquila para cumpleaños, celebraciones y encuentros. Consultanos por fechas disponibles y armamos la propuesta.',
@@ -75,15 +71,15 @@ export const SITE = {
   subtitle: 'Café, spa & momentos para vos',
   address: 'Calle 47 N° 679, entre 8 y 9',
   city: 'La Plata, Buenos Aires',
-  whatsapp: '221 504-6554', // consultas generales, manicuría, terapias, eventos y el local
-  ritualsWhatsapp: '11 4928-2503', // solo head spa y masajes
-  eventsWhatsapp: '221 504-6554',
+  whatsapp: '221 504-6554', // el único WhatsApp de la casa: head spa, manicuría, eventos y consultas
+  ritualsWhatsapp: '', // ya no se usan: un solo número para todo
+  eventsWhatsapp: '',
   instagram: 'casasamadhistyle',
   storeInstagram: 'samadhistyle',
   worksBefore: 'media/trabajos/antes.webp', // foto de "antes" para todos los trabajos (se cambia en Panel → Servicios)
   email: '',
   storeUrl: 'https://samadhi-store.vercel.app',
-  announcement: 'Head spa · Manicuría · Terapias · Cafetería — Calle 47 N° 679, La Plata',
+  announcement: 'Head spa · Manicuría · Cafetería — Calle 47 N° 679, La Plata',
   hoursText: '',
 };
 
