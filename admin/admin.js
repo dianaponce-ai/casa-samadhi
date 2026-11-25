@@ -68,7 +68,7 @@ const NAV_GROUPS = [
 const SECTIONS = NAV_GROUPS.flatMap(([, l]) => l);
 const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'asesoras', 'asesora', 'historial', 'ganancias']);
 // Lo que ve una asesora: solo sus turnos, sus servicios, sus comisiones y lo que hizo.
-const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['turnos', 'Mis turnos'], ['clientas', 'Mis clientas'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
+const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['horarios', 'Mis días y horarios'], ['turnos', 'Mis turnos'], ['clientas', 'Mis clientas'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
 const PRO_ALLOWED = new Set([...PRO_SECTIONS.map(([k]) => k), 'turno', 'clienta']);
 let attention = 0;
 function renderNav(active) {
@@ -85,7 +85,7 @@ function route() {
   renderNav({ turno: 'turnos', giftcard: 'giftcards', clienta: 'clientas', asesora: 'asesoras' }[sec] || sec);
   const view = $('#view');
   view.innerHTML = '<p class="muted">Cargando…</p>';
-  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers,
+  const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: () => (isPro() ? viewMySchedule() : viewHours()), giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers,
     asesoras: viewPros, asesora: () => viewPro(id), caja: () => viewCash(id), ganancias: viewPnl, historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
   Promise.resolve(fn()).catch((err) => { view.innerHTML = `<div class="notice">${esc(err.message)}</div>`; });
   view.focus({ preventScroll: true });
@@ -569,45 +569,143 @@ async function viewServices(editId = null) {
 }
 
 // ── Horarios, bloqueos y espacios ────────────────────────
+// ── Horarios ─────────────────────────────────────────────
+// 1) La casa abre ciertos días y horas. 2) Cada asesora elige sus días dentro de ese horario.
+// 3) Los bloqueos cierran la casa (o una sala); los días libres, solo a una asesora.
+const WEEK = [1, 2, 3, 4, 5, 6, 0];
+const hm = (t) => t.replace(/:00$/, '');
+const fmtWins = (w) => (w && w.length ? w.map((x) => `${hm(x.from)} a ${hm(x.to)}`).join(' y ') : 'No');
+const winHtml = (w) => `<span class="wk-win"><input type="time" value="${w.from}" data-f aria-label="Desde"> a <input type="time" value="${w.to}" data-t aria-label="Hasta"><button type="button" class="btn sm" data-rmwin title="Quitar franja">×</button></span>`;
+function weekHtml(week, ref, { onLabel = 'Abre', offLabel = 'Cerrado' } = {}) {
+  return `<div class="wk">${WEEK.map((d) => { const w = week[d] || []; return `<div class="wk-row ${w.length ? '' : 'off'}" data-day="${d}">
+    <label class="wk-day"><input type="checkbox" data-on ${w.length ? 'checked' : ''}> <b>${capF(DAYS[d])}</b></label>
+    <div class="wk-wins">${w.map(winHtml).join('')}<button type="button" class="btn sm" data-addwin>+ franja</button><span class="small muted wk-offl">${offLabel}</span></div>
+    ${ref ? `<span class="small muted wk-ref">La casa: ${ref[d]?.length ? fmtWins(ref[d]) : 'cerrada'}</span>` : ''}</div>`; }).join('')}</div>`;
+}
+function bindWeek(box, ref) {
+  box.addEventListener('click', (e) => {
+    const row = e.target.closest('.wk-row'); if (!row) return;
+    if (e.target.closest('[data-rmwin]')) { e.target.closest('.wk-win').remove(); if (!row.querySelector('.wk-win')) { row.classList.add('off'); row.querySelector('[data-on]').checked = false; } }
+    if (e.target.closest('[data-addwin]')) { const last = [...row.querySelectorAll('.wk-win')].at(-1); e.target.closest('[data-addwin]').insertAdjacentHTML('beforebegin', winHtml(last ? { from: last.querySelector('[data-t]').value, to: '19:00' } : { from: '10:00', to: '19:00' })); }
+  });
+  box.addEventListener('change', (e) => {
+    if (!e.target.matches('[data-on]')) return;
+    const row = e.target.closest('.wk-row'), d = row.dataset.day;
+    row.classList.toggle('off', !e.target.checked);
+    if (e.target.checked && !row.querySelector('.wk-win')) { const base = ref?.[d]?.length ? ref[d] : [{ from: '10:00', to: '19:00' }]; row.querySelector('[data-addwin]').insertAdjacentHTML('beforebegin', base.map(winHtml).join('')); }
+  });
+}
+const readWeek = (box) => Object.fromEntries(WEEK.map((d) => { const row = box.querySelector(`.wk-row[data-day="${d}"]`); return [d, row.querySelector('[data-on]').checked ? [...row.querySelectorAll('.wk-win')].map((w) => ({ from: w.querySelector('[data-f]').value, to: w.querySelector('[data-t]').value })).filter((w) => w.from && w.to) : []]; }));
+/** Agrupa días seguidos con el mismo horario y motivo (se cargan día por día). */
+function groupDays(list) {
+  const out = [];
+  for (const k of list) {
+    const g = out.at(-1);
+    if (g && addDay(g.to_date, 1) === k.date && g.from === k.from && g.to === k.to && g.reason === k.reason && g.resource === k.resource) { g.to_date = k.date; g.ids.push(k.id); }
+    else out.push({ ...k, to_date: k.date, ids: [k.id] });
+  }
+  return out;
+}
+const rangeTxt = (g) => `${capF(longDay(g.date))}${g.to_date !== g.date ? ` al ${longDay(g.to_date)}` : ''}`;
+const offForm = (id) => `<div class="off-form"><div class="row"><label class="fl"><span>Desde el día</span><input type="date" id="${id}D" value="${todayKey()}" min="${todayKey()}"></label><label class="fl"><span>Hasta el día (opcional)</span><input type="date" id="${id}T" min="${todayKey()}"></label></div>
+  <div class="row"><label class="fl"><span>¿Todo el día?</span><select id="${id}All"><option value="1">Sí, todo el día</option><option value="0">No, solo un horario</option></select></label><label class="fl" data-hrs hidden><span>De</span><input type="time" id="${id}F"></label><label class="fl" data-hrs hidden><span>A</span><input type="time" id="${id}U"></label></div>`;
+const bindOffForm = (box, id) => { box.querySelector(`#${id}All`).onchange = (e) => box.querySelectorAll('[data-hrs]').forEach((x) => (x.hidden = e.target.value === '1')); };
+
+/** Días y horarios de una asesora: lo usa ella ("Mis días y horarios") y administración (en su ficha). */
+async function renderSchedule(box, base, { self }) {
+  const r = await api(base);
+  const who = self ? 'Vos' : r.pro.name;
+  box.innerHTML = `<div class="grid g2" style="align-items:start">
+    <div class="card form" id="schWeek"><h2>${self ? 'Mis días y horarios' : `Días y horarios de ${esc(r.pro.name)}`}</h2>
+      <p class="small muted">${self ? 'Marcá los días que vas a estar y en qué horario. El turnero solo ofrece turnos con vos en esos horarios.' : 'El turnero solo ofrece turnos con ella en estos días y horarios.'} Siempre dentro del horario de la casa.</p>
+      <div class="seg"><label><input type="radio" name="schMode" value="1" ${r.follows ? 'checked' : ''}> Igual que el horario de la casa</label><label><input type="radio" name="schMode" value="0" ${r.follows ? '' : 'checked'}> ${self ? 'Mis propios días y horarios' : 'Días y horarios propios'}</label></div>
+      <div id="schDays" ${r.follows ? 'hidden' : ''}>${weekHtml(r.follows ? r.house : r.week, r.house, { offLabel: 'No ' + (self ? 'vengo' : 'viene') })}</div>
+      ${r.follows ? `<p class="small" id="schHouse">${WEEK.map((d) => `${capF(DAYS[d]).slice(0, 3)} ${r.house[d]?.length ? fmtWins(r.house[d]) : '—'}`).join(' · ')}</p>` : ''}
+      <div class="actions"><button class="btn primary" id="schSave">Guardar horario</button></div>
+      <div id="schConf">${conflictsHtml(r.conflicts, self)}</div>
+    </div>
+    <div class="card form" id="schOff"><h2>${self ? 'Mis días libres' : 'Días libres y ausencias'}</h2>
+      <p class="small muted">Vacaciones, un turno médico, un trámite… ${who} no ${self ? 'aparecés' : 'aparece'} en el turnero esos días u horas.</p>
+      ${offForm('to')}
+      <label class="fl"><span>Motivo (opcional, lo ve el equipo)</span><input id="toR" placeholder="Ej.: vacaciones"></label>
+      <p class="err" id="toErr"></p><div class="actions"><button class="btn primary" id="toAdd">Marcar ${self ? 'que no voy a estar' : 'día libre'}</button></div>
+      ${r.timeoff.length ? `<table class="offs">${groupDays(r.timeoff).map((g) => `<tr><td>${esc(rangeTxt(g))}<div class="small muted">${g.from ? `de ${hm(g.from)} a ${hm(g.to || '24:00')}` : 'Todo el día'}${g.reason ? ` · ${esc(g.reason)}` : ''}</div></td><td class="r"><button class="btn sm" data-offrm="${g.ids.join(',')}">Quitar</button></td></tr>`).join('')}</table>` : '<p class="muted small">No hay días libres cargados.</p>'}
+    </div></div>`;
+  const W = box.querySelector('#schDays');
+  bindWeek(W, r.house); bindOffForm(box, 'to');
+  box.querySelectorAll('[name="schMode"]').forEach((x) => (x.onchange = () => { W.hidden = x.value === '1' && x.checked; const hs = box.querySelector('#schHouse'); if (hs) hs.hidden = !W.hidden; }));
+  const after = (x, msg) => { toast(msg); renderSchedule(box, base, { self }); if (x.conflicts?.length) setTimeout(() => box.querySelector('#schConf')?.scrollIntoView({ block: 'center' }), 200); };
+  box.querySelector('#schSave').onclick = async (e) => {
+    e.target.disabled = true;
+    const follows = box.querySelector('[name="schMode"]:checked').value === '1';
+    try { after(await api(base, { method: 'PUT', body: { follows, week: follows ? null : readWeek(W) } }), 'Horario guardado'); } catch (err) { toast(err.message, true); e.target.disabled = false; }
+  };
+  box.querySelector('#toAdd').onclick = async (e) => {
+    const all = box.querySelector('#toAll').value === '1';
+    box.querySelector('#toErr').textContent = ''; e.target.disabled = true;
+    try { after(await api(base + '/timeoff', { method: 'POST', body: { date: box.querySelector('#toD').value, to_date: box.querySelector('#toT').value, from: all ? '' : box.querySelector('#toF').value, to: all ? '' : box.querySelector('#toU').value, reason: box.querySelector('#toR').value } }), 'Listo, quedó marcado'); }
+    catch (err) { box.querySelector('#toErr').textContent = err.message; e.target.disabled = false; }
+  };
+  box.querySelectorAll('[data-offrm]').forEach((b) => (b.onclick = async () => { try { after(await api(`${base}/timeoff/${b.dataset.offrm}`, { method: 'DELETE' }), 'Quitado'); } catch (err) { toast(err.message, true); } }));
+}
+function conflictsHtml(list, self) {
+  if (!list?.length) return '';
+  return `<div class="conf"><b>${list.length === 1 ? 'Hay 1 turno' : `Hay ${list.length} turnos`} en días u horarios en los que ${self ? 'no vas a estar' : 'no va a estar'}.</b> ${self ? 'Avisale a administración para reprogramarlos.' : 'Reprogramalos o asignáselos a otra asesora.'}
+    <ul>${list.map((b) => `<li>${self ? '' : `<a href="#turno/${b.id}">`}${esc(shortWhen(b.start))} · ${esc(b.service_name)} · ${esc(b.name)}${self ? '' : '</a>'}</li>`).join('')}</ul></div>`;
+}
+async function viewMySchedule() {
+  $('#view').innerHTML = '<div class="page-head"><div><h1>Mis días y horarios</h1><div class="sub">Lo que cargues acá define cuándo te pueden reservar en la web.</div></div></div><div id="schBox"></div>';
+  renderSchedule($('#schBox'), '/schedule', { self: true });
+}
+
+/** Horarios y bloqueos de la casa (el general del spa), con el resumen de cada asesora. */
 async function viewHours() {
   const [{ settings: S }, bl] = await Promise.all([api('/settings'), api('/blocks')]);
-  const order = [1, 2, 3, 4, 5, 6, 0];
-  const winRow = (d, w, i) => `<span class="w" data-win="${d}"><input type="time" value="${w.from}" data-f> a <input type="time" value="${w.to}" data-t> <button class="btn sm" data-rmw title="Quitar">×</button></span>`;
-  $('#view').innerHTML = `<div class="page-head"><div><h1>Horarios y bloqueos</h1><div class="sub">Con esto se arman los turnos libres de la web</div></div></div>
-    <div class="grid g2">
-      <div class="card form"><h2>Horario de atención</h2><div class="hours-ed">${order.map((d) => `<div class="d"><b>${capF(DAYS[d])}</b><div class="w" id="wd${d}">${(S.hours[d] || []).map((w, i) => winRow(d, w, i)).join('')}<button class="btn sm" data-addw="${d}">${(S.hours[d] || []).length ? '+ franja' : 'Abrir este día'}</button></div></div>`).join('')}</div>
-        <p class="small muted">Para cortar al mediodía, agregá dos franjas (por ejemplo 10 a 13 y 15 a 19). Un día sin franjas queda cerrado.</p>
-        ${isAdmin() ? '<div class="actions"><button class="btn primary" id="hSave">Guardar horario</button></div>' : ''}</div>
-      <div class="card form"><h2>Bloquear días u horarios</h2>
-        <p class="small muted">Feriados, vacaciones, un turno médico… En ese rango no se ofrecen turnos en la web.</p>
-        <div class="row"><label class="fl"><span>Desde el día</span><input type="date" id="bDate" value="${todayKey()}"></label><label class="fl"><span>Hasta el día</span><input type="date" id="bTo"></label></div>
-        <div class="row"><label class="fl"><span>Desde la hora (vacío = todo el día)</span><input type="time" id="bFrom"></label><label class="fl"><span>Hasta la hora</span><input type="time" id="bUntil"></label></div>
-        <div class="row"><label class="fl"><span>Qué se bloquea</span><select id="bRes"><option value="all">Toda la casa</option>${S.resources.map((r) => `<option value="${r.key}">${esc(r.name)}</option>`).join('')}</select></label><label class="fl"><span>Motivo (solo lo ve el equipo)</span><input id="bReason"></label></div>
-        <p class="err" id="bErr"></p><div class="actions"><button class="btn primary" id="bAdd">Bloquear</button></div>
-        ${bl.blocks.length ? `<table>${bl.blocks.map((k) => `<tr><td class="n">${k.date.split('-').reverse().slice(0, 2).join('/')}</td><td>${k.from ? `${k.from} a ${k.to || 'cierre'}` : 'Todo el día'}</td><td>${k.resource === 'all' ? 'Toda la casa' : esc(S.resources.find((r) => r.key === k.resource)?.name || k.resource)}</td><td>${esc(k.reason)}</td><td class="r"><button class="btn sm" data-rmb="${k.id}">Quitar</button></td></tr>`).join('')}</table>` : '<p class="muted">No hay bloqueos por delante.</p>'}
+  const resName = (k) => (k === 'all' ? 'Toda la casa' : esc(S.resources.find((r) => r.key === k)?.name || k));
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Horarios y bloqueos</h1><div class="sub">El horario general del spa. Los turnos de la web salen de acá, combinado con los días y horarios de cada asesora.</div></div></div>
+    <ol class="how"><li><b>La casa abre</b> estos días y horarios.</li><li><b>Cada asesora</b> elige sus días dentro de ese horario (en su panel, o en su ficha).</li><li><b>Los cierres</b> (feriados, vacaciones de la casa) cancelan todo ese día; los <b>días libres</b> de una asesora, solo sus turnos.</li></ol>
+    <div class="grid g2" style="align-items:start">
+      <div class="card form" id="houseWeek"><h2>1 · Horario de atención de la casa</h2>
+        <p class="small muted">Marcá los días que abre. Para cortar al mediodía, sumá una segunda franja (por ejemplo 10 a 13 y 15 a 19).</p>
+        ${weekHtml(S.hours, null, { offLabel: 'Cerrado' })}
+        ${isAdmin() ? `<div class="actions"><button class="btn" id="hCopy" title="Copia el horario del lunes a los días que abre">Copiar el lunes a los demás días</button><button class="btn primary" id="hSave">Guardar horario</button></div>` : '<p class="small muted">Solo administración puede cambiar el horario de la casa.</p>'}
       </div>
-      ${isAdmin() ? `<div class="card form"><h2>Espacios</h2><p class="small muted">Cada servicio se hace en un espacio. Si un espacio atiende a dos personas a la vez (por ejemplo, dos manicuras), subí la capacidad.</p>
+      <div class="card form"><h2>2 · Asesoras</h2>
+        <p class="small muted">Cuándo atiende cada una. Ellas lo cargan desde su panel (Mis días y horarios)${isAdmin() ? ' o lo editás desde su ficha' : ''}.</p>
+        ${bl.pros.length ? `<div class="tablewrap"><table class="prosw"><tr><th>Asesora</th>${WEEK.map((d) => `<th>${capF(DAYS[d]).slice(0, 3)}</th>`).join('')}<th></th></tr>
+          ${bl.pros.map((p) => `<tr><td><b>${esc(p.name)}</b><div class="small muted">${p.follows ? 'Igual que la casa' : 'Horario propio'}${p.timeoff ? ` · ${p.timeoff} día${p.timeoff === 1 ? '' : 's'} libre${p.timeoff === 1 ? '' : 's'}` : ''}</div></td>${WEEK.map((d) => `<td class="small ${p.week[d]?.length ? '' : 'muted'}">${p.week[d]?.length ? p.week[d].map((w) => `${hm(w.from)}–${hm(w.to)}`).join('<br>') : '—'}</td>`).join('')}<td class="r">${isAdmin() ? `<a class="btn sm" href="#asesora/${p.id}">Editar</a>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="muted">Todavía no hay asesoras cargadas.</p>'}
+      </div>
+      <div class="card form" id="houseOff"><h2>3 · Cierres y bloqueos de la casa</h2>
+        <p class="small muted">Feriados, vacaciones de la casa, un evento privado… En ese rango no se ofrecen turnos en la web.</p>
+        ${offForm('hb')}
+        <div class="row"><label class="fl"><span>Qué se cierra</span><select id="hbRes"><option value="all">Toda la casa</option>${S.resources.map((r) => `<option value="${r.key}">Solo ${esc(r.name)}</option>`).join('')}</select></label><label class="fl"><span>Motivo (solo lo ve el equipo)</span><input id="hbR" placeholder="Ej.: feriado"></label></div>
+        <p class="err" id="hbErr"></p><div class="actions"><button class="btn primary" id="hbAdd">Cerrar esos días</button></div>
+        ${bl.blocks.length ? `<table class="offs">${groupDays(bl.blocks).map((g) => `<tr><td>${esc(rangeTxt(g))}<div class="small muted">${g.from ? `de ${hm(g.from)} a ${hm(g.to || '24:00')}` : 'Todo el día'} · ${resName(g.resource)}${g.reason ? ` · ${esc(g.reason)}` : ''}</div></td><td class="r"><button class="btn sm" data-rmb="${g.ids.join(',')}">Quitar</button></td></tr>`).join('')}</table>` : '<p class="muted small">No hay cierres cargados.</p>'}
+      </div>
+      ${isAdmin() ? `<div class="card form"><h2>Salas</h2><p class="small muted">Cada servicio se hace en una sala. Si una sala atiende a dos personas a la vez (por ejemplo, dos manicuras), subí la capacidad.</p>
         <div id="resEd">${S.resources.map((r) => `<div class="row" data-res="${esc(r.key)}"><label class="fl"><span>Nombre</span><input value="${esc(r.name)}" data-rn></label><label class="fl"><span>A la vez</span><input type="number" min="1" max="20" value="${r.capacity}" data-rc></label></div>`).join('')}</div>
-        <div class="actions"><button class="btn" id="resAdd">+ Espacio</button><button class="btn primary" id="resSave">Guardar espacios</button></div></div>` : ''}
+        <div class="actions"><button class="btn" id="resAdd">+ Sala</button><button class="btn primary" id="resSave">Guardar salas</button></div></div>` : ''}
     </div>`;
-  ROOT.querySelector('#view').onclick = (e) => {
-    const add = e.target.closest('[data-addw]');
-    if (add) { const d = add.dataset.addw; add.insertAdjacentHTML('beforebegin', winRow(d, { from: '10:00', to: '19:00' })); add.textContent = '+ franja'; }
-    if (e.target.closest('[data-rmw]')) e.target.closest('[data-win]').remove();
-  };
-  $('#hSave')?.addEventListener('click', async () => {
-    const body = {}; for (const d of order) body[d] = $$(`[data-win="${d}"]`).map((w) => ({ from: w.querySelector('[data-f]').value, to: w.querySelector('[data-t]').value })).filter((w) => w.from && w.to);
-    try { await api('/settings/hours', { method: 'PUT', body }); toast('Horario guardado'); } catch (e) { toast(e.message, true); }
+  const HW = $('#houseWeek');
+  bindWeek(HW, null); bindOffForm(ROOT.querySelector('#houseOff') || $('#houseOff'), 'hb');
+  if (!isAdmin()) HW.querySelectorAll('input, button').forEach((x) => (x.disabled = true));
+  $('#hCopy')?.addEventListener('click', () => {
+    const mon = readWeek(HW)[1];
+    if (!mon.length) return toast('Primero cargá el horario del lunes', true);
+    HW.querySelectorAll('.wk-row').forEach((row) => { if (row.dataset.day === '1' || !row.querySelector('[data-on]').checked) return; row.querySelectorAll('.wk-win').forEach((w) => w.remove()); row.querySelector('[data-addwin]').insertAdjacentHTML('beforebegin', mon.map(winHtml).join('')); });
+    toast('Copiado: revisá y guardá');
   });
-  $('#bAdd').onclick = async () => {
-    $('#bErr').textContent = '';
-    try { await api('/blocks', { method: 'POST', body: { date: $('#bDate').value, to_date: $('#bTo').value, from: $('#bFrom').value, to: $('#bUntil').value, resource: $('#bRes').value, reason: $('#bReason').value } }); toast('Bloqueado'); viewHours(); } catch (e) { $('#bErr').textContent = e.message; }
+  $('#hSave')?.addEventListener('click', async () => { try { await api('/settings/hours', { method: 'PUT', body: readWeek(HW) }); toast('Horario de la casa guardado'); viewHours(); } catch (e) { toast(e.message, true); } });
+  $('#hbAdd').onclick = async () => {
+    const all = $('#hbAll').value === '1';
+    $('#hbErr').textContent = '';
+    try { await api('/blocks', { method: 'POST', body: { date: $('#hbD').value, to_date: $('#hbT').value, from: all ? '' : $('#hbF').value, to: all ? '' : $('#hbU').value, resource: $('#hbRes').value, reason: $('#hbR').value } }); toast('Listo, quedó cerrado'); viewHours(); } catch (e) { $('#hbErr').textContent = e.message; }
   };
-  $$('[data-rmb]').forEach((b) => (b.onclick = async () => { await api('/blocks/' + b.dataset.rmb, { method: 'DELETE' }); viewHours(); }));
+  $$('[data-rmb]').forEach((b) => (b.onclick = async () => { await api('/blocks/' + b.dataset.rmb, { method: 'DELETE' }); toast('Quitado'); viewHours(); }));
   $('#resAdd')?.addEventListener('click', () => $('#resEd').insertAdjacentHTML('beforeend', '<div class="row" data-res=""><label class="fl"><span>Nombre</span><input data-rn></label><label class="fl"><span>A la vez</span><input type="number" min="1" value="1" data-rc></label></div>'));
   $('#resSave')?.addEventListener('click', async () => {
     const resources = $$('[data-res]').map((r) => ({ key: r.dataset.res, name: r.querySelector('[data-rn]').value, capacity: r.querySelector('[data-rc]').value }));
-    try { await api('/settings/resources', { method: 'PUT', body: { resources } }); SERVICES = null; toast('Espacios guardados'); viewHours(); } catch (e) { toast(e.message, true); }
+    try { await api('/settings/resources', { method: 'PUT', body: { resources } }); SERVICES = null; toast('Salas guardadas'); viewHours(); } catch (e) { toast(e.message, true); }
   });
 }
 
@@ -927,7 +1025,9 @@ async function viewPro(id) {
         <div class="card"><h2>Datos</h2><dl class="kv"><dt>Celular</dt><dd>${esc(p.phone || '—')}</dd><dt>Email</dt><dd>${esc(p.email || '—')}</dd><dt>DNI</dt><dd>${esc(p.dni || '—')}</dd><dt>CUIT / CUIL</dt><dd>${esc(p.cuit || '—')}</dd><dt>Cumpleaños</dt><dd>${p.birthday ? esc(p.birthday.split('-').reverse().join('/')) : '—'}</dd><dt>Dirección</dt><dd>${esc(p.address || '—')}</dd><dt>Para pagarle</dt><dd>${esc(p.alias || '—')}</dd><dt>Servicios</dt><dd>${esc(p.service_names.join(', ') || '—')}</dd>${p.notes ? `<dt>Notas</dt><dd>${esc(p.notes)}</dd>` : ''}<dt>Alta</dt><dd>${at(p.created_at)}</dd></dl></div>
         <div class="card"><h2>Lo que hizo en el panel</h2>${auditList(d.audit)}</div>
       </div>
-    </div>`;
+    </div>
+    <div id="schBox" style="margin-top:14px"></div>`;
+  renderSchedule($('#schBox'), `/pros/${id}/schedule`, { self: false });
   $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPro(id); }));
   $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   $('#pEdit').onclick = () => proForm($('#pEd'), p, d);

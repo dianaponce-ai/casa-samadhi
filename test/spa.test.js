@@ -544,3 +544,41 @@ test('ganancias y pérdidas: mes a mes con turnos, clientas, ingresos, egresos y
   // Recepción no lo ve.
   await assert.rejects(adm('GET', '/pnl', undefined, { id: 3, role: 'staff', name: 'R', password_hash: 'x$x' }), (e) => e.status === 403 || e.status === 401);
 });
+
+test('horario de cada asesora: sus días y franjas, sus días libres y los turnos que quedan afuera', async () => {
+  const st = seedState(), env = makeEnv(); // martes 3/11/2026
+  const admin = { id: 900, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin);
+  const tri = st.staff.find((u) => u.name === 'Trinidad'); tri.password_hash = 'x$x';
+  const svc = st.services.find((s) => s.slug === 'ritual-esencial');
+  const slots = (date) => call(st, env, 'GET', `/api/availability?service=${svc.id}&from=${date}&days=1`).then((r) => r.days[0].slots);
+  // Por defecto sigue el horario de la casa (10 a 19).
+  assert.ok((await slots('2026-11-05')).includes('10:00'));
+  // Un turno el jueves a las 11 con Trinidad.
+  await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-05', time: '11:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: st.bookings[0].token, result: 'approved' });
+  // Ella misma carga su horario: martes a sábado de 14 a 19 (el jueves a la mañana ya no está).
+  const me = (m, p, b) => call(st, env, m, '/api/admin' + p, b, tri);
+  const week = { 0: [], 1: [], 2: [{ from: '14:00', to: '19:00' }], 3: [{ from: '14:00', to: '19:00' }], 4: [{ from: '14:00', to: '19:00' }], 5: [{ from: '14:00', to: '19:00' }], 6: [{ from: '14:00', to: '19:00' }] };
+  let r = await me('PUT', '/schedule', { follows: false, week });
+  assert.equal(r.follows, false);
+  assert.equal(r.conflicts.length, 1); // el turno del jueves 11 h quedó afuera: hay que reprogramarlo
+  const thu = await slots('2026-11-05');
+  assert.ok(!thu.includes('10:00') && thu.includes('14:00') && !thu.includes('18:30'));
+  assert.equal((await slots('2026-11-09')).length, 0); // lunes: no trabaja
+  // Día libre el viernes.
+  r = await me('POST', '/schedule/timeoff', { date: '2026-11-06', reason: 'Turno médico' });
+  assert.equal(r.timeoff.length, 1);
+  assert.equal((await slots('2026-11-06')).length, 0);
+  // Los días libres de las asesoras no se mezclan con los bloqueos de la casa.
+  const bl = await call(st, env, 'GET', '/api/admin/blocks', undefined, admin);
+  assert.equal(bl.blocks.length, 0);
+  assert.equal(bl.pros.find((p) => p.name === 'Trinidad').timeoff, 1);
+  // Administración lo edita desde su ficha: vuelve al horario de la casa.
+  r = await call(st, env, 'PUT', `/api/admin/pros/${tri.id}/schedule`, { follows: true }, admin);
+  assert.equal(r.follows, true);
+  assert.equal(r.conflicts.length, 0);
+  // El día libre sigue: se quita.
+  r = await call(st, env, 'DELETE', `/api/admin/pros/${tri.id}/schedule/timeoff/${r.timeoff[0].id}`, undefined, admin);
+  assert.equal(r.timeoff.length, 0);
+  assert.ok((await slots('2026-11-06')).includes('10:00'));
+});
