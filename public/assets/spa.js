@@ -24,6 +24,8 @@ const origen = () => { let o = null; try { o = JSON.parse(localStorage.getItem('
 // Meta Pixel: eventos estándar (si el pixel está cargado).
 const px = (ev, data) => { try { window.fbq?.('track', ev, data); } catch {} };
 const pxc = (ev, data) => { try { window.fbq?.('trackCustom', ev, data); } catch {} };
+// Una sola vez por gift card en este navegador (para no contar dos veces si vuelven a abrir el link).
+const pxOnce = (key, ev, data) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} px(ev, data); };
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -463,6 +465,7 @@ async function submitBooking() {
   try {
     const items = bk.items.map((it) => ({ service_id: it.service.id, date: it.date, time: it.time, pro_id: it.pro || null }));
     const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod, origen: origen() });
+    px('InitiateCheckout', { content_name: bk.items.map((it) => it.service.name).join(' + '), num_items: bk.items.length, value: bk.items.reduce((a, it) => a + (it.service.price || 0), 0), currency: 'ARS' });
     bk.items = [];
     if (r.pay_url) { bk.sending = false; goPay(r.pay_url); return; }
     goThanks('turno', r.booking.token);
@@ -674,11 +677,13 @@ async function submitGift() {
     gf.sending = false; goPay(r.pay_url);
   } catch (e) { gf.sending = false; gf.errors = e.data?.errors || {}; gf.error = Object.keys(gf.errors).length ? '' : e.message; renderGift(); }
 }
-async function showGift(token, pre) {
+async function showGift(token, pre, track = false) {
   setHash('#gift/' + token);
   openDrawer(`${head('Gift card')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Gift card' });
   try {
     const g = pre || (await api('/api/giftcards/' + encodeURIComponent(token))).gift;
+    // Purchase: al volver del pago con la gift card ya activa (una vez por gift card; no al abrir el link del email).
+    if (track && g.status === 'active' && g.token) pxOnce('gift:' + g.token, 'Purchase', { content_name: 'Gift card' + (g.service_name ? ' · ' + g.service_name : ''), content_type: 'product', value: g.amount || 0, currency: 'ARS' });
     const exp = g.expires_at ? new Date(g.expires_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     $('#drawer').innerHTML = `${head('Gift card')}<div class="dbody"><div class="status">
       <span class="pill ${g.status === 'active' ? 'ok' : ['expired', 'cancelled', 'used'].includes(g.status) ? 'bad' : ''}">${esc(g.status_label)}</span>
@@ -705,7 +710,7 @@ async function simulate(kind, token, result) {
   try {
     const r = await api('/api/pay/simulate', { kind, token, result });
     if (result === 'rejected') toast('Pago rechazado (prueba)');
-    if (kind === 'gift') showGift(token, r.gift); else if (result === 'rejected') showBooking(token, r.booking); else goThanks('turno', token);
+    if (kind === 'gift') showGift(token, r.gift, true); else if (result === 'rejected') showBooking(token, r.booking); else goThanks('turno', token);
   } catch (e) { toast(e.message); }
 }
 
@@ -980,7 +985,7 @@ async function handleReturn() {
   const pid = p.get('payment_id') || p.get('collection_id');
   if (pid) { try { await api('/api/pay/confirm', { kind, token, payment_id: pid }); } catch {} }
   const rejected = p.get('status') === 'rejected' || p.get('collection_status') === 'rejected';
-  if (kind === 'gift') showGift(token); else if (rejected) showBooking(token); else { goThanks('turno', token); return true; }
+  if (kind === 'gift') showGift(token, null, true); else if (rejected) showBooking(token); else { goThanks('turno', token); return true; }
   if (rejected) toast('El pago no se aprobó. Podés intentar de nuevo.');
   return true;
 }
