@@ -552,13 +552,69 @@ async function showBooking(token, pre) {
         ${b.price ? `<div><dt>Precio</dt><dd>${fmt(b.price)}</dd></div>` : ''}${b.gift_applied ? `<div><dt>Gift card</dt><dd>− ${fmt(b.gift_applied)}</dd></div>` : ''}${b.deposit_paid ? `<div><dt>Seña pagada</dt><dd>${fmt(b.deposit_paid)}${b.pay_method_label ? ` · ${esc(b.pay_method_label)}` : ''}</dd></div>` : ''}
         ${b.status === 'confirmed' && b.price ? `<div><dt>Resta en la casa</dt><dd><b>${fmt(rest)}</b></dd></div>` : ''}<div><dt>Código</dt><dd>${esc(b.code)}</dd></div></dl>
       ${b.status === 'confirmed' ? `<p class="note">Te mandamos la confirmación a ${esc(b.email)}. Llegá 10 minutos antes: ${esc(SITE.site.address)}.</p>` : ''}
+      ${b.calendar ? `<div class="cal-add"><span class="step-t" style="margin:0">Agregalo a tu calendario</span><div class="cal-btns"><a class="btn sm" href="${esc(b.calendar.google)}" target="_blank" rel="noopener">Google Calendar</a><button class="btn sm" data-ics="${esc(b.token)}">Apple / Outlook</button></div></div>` : ''}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${b.pay_url ? `<button class="btn solid" data-pay="${esc(b.pay_url)}">Pagar la seña</button>` : ''}
+        ${b.can_reschedule ? `<button class="btn solid" data-resched="${esc(b.token)}">Cambiar día u horario</button>` : ''}
         ${b.can_cancel ? `<button class="btn" data-cancel="${esc(b.token)}">Cancelar ${many ? 'la reserva' : 'turno'}</button>` : ''}
         ${b.transfer ? '' : `<a class="btn" href="${wa(b.whatsapp || SITE.site.whatsapp, `Hola! Tengo el turno ${b.code} (${b.service_name}, ${b.when}).`)}" target="_blank" rel="noopener">WhatsApp</a>`}
         ${['cancelled', 'expired'].includes(b.status) ? '<button class="btn solid" data-book>Reservar otro turno</button>' : ''}
       </div></div></div>`;
   } catch (e) { $('#drawer .dbody').innerHTML = `<p class="form-err" style="margin-top:20px">${esc(e.message)}</p>`; }
+}
+
+// ── La clienta cambia su turno ───────────────────────────
+// Mismo servicio y misma asesora; ve los horarios libres sin contar su propio turno.
+const rs = { b: null, days: [], date: '', time: '', loading: false, error: '', sending: false };
+async function openReschedule(token) {
+  Object.assign(rs, { b: null, days: [], date: '', time: '', error: '', sending: false, loading: true });
+  renderReschedule();
+  try {
+    rs.b = (await api('/api/bookings/' + encodeURIComponent(token))).booking;
+    const r = await api(`/api/availability?service=${rs.b.service_id}&days=21&ignore=${encodeURIComponent(token)}`);
+    rs.days = r.days.filter((d) => d.slots.length);
+    rs.date = (rs.days.find((d) => d.date === rs.b.start.slice(0, 10)) || rs.days[0] || {}).date || '';
+  } catch (e) { rs.error = e.message; }
+  rs.loading = false; renderReschedule();
+}
+function renderReschedule() {
+  const day = rs.days.find((d) => d.date === rs.date);
+  const cur = rs.b?.start || '';
+  const body = rs.loading ? '<div class="spinner" style="margin-top:20px"></div>' : !rs.b ? `<p class="form-err">${esc(rs.error)}</p>` : `
+    <div class="sel-sum"><span class="n">${esc(rs.b.service_name)}</span><span class="w">Ahora: ${esc(cap(rs.b.when))}${rs.b.pro_name ? ` · con ${esc(rs.b.pro_name)}` : ''}</span></div>
+    <div class="step-t">Elegí el nuevo día</div>
+    ${rs.days.length ? `<div class="daystrip">${rs.days.map((d) => { const l = dayLabel(d.date); return `<button class="day" data-rsday="${d.date}" aria-pressed="${d.date === rs.date}"><span class="w">${l.w}</span><span class="d">${l.d}</span><span class="mo">${MONTHS[l.m - 1]}</span></button>`; }).join('')}</div>` : '<p class="empty-slots">No hay otros horarios libres en las próximas semanas. Escribinos por WhatsApp.</p>'}
+    ${day ? `<div class="step-t">Horarios del ${esc(dayLabel(day.date).long)}</div><div class="times">${day.slots.map((t) => `<button class="time" data-rstime="${t}" aria-pressed="${t === rs.time}" ${`${day.date} ${t}` === cur ? 'disabled title="Es tu horario actual"' : ''}>${t}</button>`).join('')}</div>` : ''}
+    ${rs.error ? `<p class="form-err" role="alert">${esc(rs.error)}</p>` : ''}`;
+  const foot = rs.b ? `<button class="btn solid wide" data-rsgo ${rs.time && !rs.sending ? '' : 'disabled'}>${rs.sending ? 'Un momento…' : rs.time ? `Pasar al ${esc(dayLabel(rs.date).long)} a las ${rs.time}` : 'Elegí un horario'}</button>` : '';
+  const html = `${head('Cambiar tu turno', 'turno')}<div class="dbody">${body}</div>${foot ? `<div class="dfoot">${foot}</div>` : ''}`;
+  if (!$('#drawer').classList.contains('on')) openDrawer(html, { label: 'Cambiar tu turno' }); else $('#drawer').innerHTML = html;
+}
+async function sendReschedule() {
+  rs.sending = true; rs.error = ''; renderReschedule();
+  try {
+    const r = await api(`/api/bookings/${encodeURIComponent(rs.b.token)}/reschedule`, { date: rs.date, time: rs.time });
+    toast('Listo, cambiamos tu turno'); showBooking(r.booking.token, r.booking);
+  } catch (e) {
+    rs.sending = false; rs.error = e.message;
+    if (e.data?.taken) { rs.time = ''; try { const r = await api(`/api/availability?service=${rs.b.service_id}&days=21&ignore=${encodeURIComponent(rs.b.token)}`); rs.days = r.days.filter((d) => d.slots.length); } catch {} }
+    renderReschedule();
+  }
+}
+/** El turno como archivo .ics para Apple Calendar, Outlook y otros (se arma en el navegador). */
+async function downloadIcs(token) {
+  const b = (await api('/api/bookings/' + encodeURIComponent(token))).booking;
+  const ms = Date.parse(b.start.replace(' ', 'T') + ':00Z') + 3 * 3600e3; // hora argentina → UTC
+  const st = (x) => new Date(x).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const t = (s) => String(s || '').replace(/[\\;,]/g, (c) => '\\' + c);
+  const link = location.origin + (SOLO ? location.pathname : '/turnos') + '#turno/' + b.token;
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Casa Samadhi//Turnos//ES', 'BEGIN:VEVENT', `UID:${b.code}@casasamadhi`, `DTSTAMP:${st(Date.now())}`,
+    `DTSTART:${st(ms)}`, `DTEND:${st(ms + (b.duration || 60) * 60e3)}`, `SUMMARY:${t(b.service_name + ' · Casa Samadhi')}`,
+    `LOCATION:${t(`Casa Samadhi, ${SITE.site.address}, ${SITE.site.city}`)}`, `DESCRIPTION:${t(`Código ${b.code}${b.pro_name ? ` · Te atiende ${b.pro_name}` : ''}. Ver, cambiar o cancelar: ${link}`)}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Turno en Casa Samadhi', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); a.download = `turno-${b.code}.ics`;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
 // ── Gift cards ───────────────────────────────────────────
@@ -803,6 +859,11 @@ function bind() {
     if (t.closest('[data-print]')) return window.print();
     const pay = t.closest('[data-pay]'); if (pay) return goPay(pay.dataset.pay);
     const sim = t.closest('[data-sim]'); if (sim) return simulate(sim.dataset.kind, sim.dataset.token, sim.dataset.sim);
+    const rsb = t.closest('[data-resched]'); if (rsb) return openReschedule(rsb.dataset.resched);
+    const rsd = t.closest('[data-rsday]'); if (rsd) { rs.date = rsd.dataset.rsday; rs.time = ''; rs.error = ''; return renderReschedule(); }
+    const rst = t.closest('[data-rstime]'); if (rst && !rst.disabled) { rs.time = rst.dataset.rstime; rs.error = ''; return renderReschedule(); }
+    if (t.closest('[data-rsgo]')) return sendReschedule();
+    const ics = t.closest('[data-ics]'); if (ics) { downloadIcs(ics.dataset.ics).catch((err) => toast(err.message)); return; }
     const cancel = t.closest('[data-cancel]');
     if (cancel) {
       if (cancel.dataset.sure) { cancel.disabled = true; try { const r = await api(`/api/bookings/${encodeURIComponent(cancel.dataset.cancel)}/cancel`, {}); toast('Turno cancelado'); showBooking(r.booking.token, r.booking); } catch (err) { toast(err.message); cancel.disabled = false; } }
@@ -812,6 +873,7 @@ function bind() {
     const back = t.closest('[data-back]');
     if (back) {
       readBkForm(); bk.error = '';
+      if (back.dataset.back === 'turno' && rs.b) return showBooking(rs.b.token);
       if (back.dataset.back === 'sum') { bk.step = 3; bk.service = null; return renderBooking(); }
       if (back.dataset.back === 'info') { bk.info = null; return renderBooking(); }
       const from = bk.step;

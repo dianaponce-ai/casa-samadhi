@@ -615,3 +615,9 @@ body.lb-on { overflow: hidden; }
 .wb-cmp img { pointer-events: none; -webkit-user-drag: none; user-select: none; }
 .plaque .works-row { grid-template-columns: repeat(auto-fit, 76px); justify-content: center; max-width: none; }
 @media (max-width: 720px) { .plaque .works-row { grid-template-columns: repeat(auto-fit, 68px); } }
+
+/* Página del turno: agregar al calendario */
+.cal-add { display: grid; gap: 8px; width: 100%; padding: 14px 16px; border: 1px solid rgba(168, 132, 63, .38); border-radius: 16px; background: var(--papel); }
+.cal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.cal-btns .btn { border-radius: 999px; }
+.time[disabled] { opacity: .35; cursor: not-allowed; }

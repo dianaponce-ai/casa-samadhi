@@ -93,7 +93,7 @@ test('emails automáticos: seña pendiente, horario liberado, gracias, agenda di
   env.advance(11 * 3600e3); await tick(st, env); // pasa las 20 h: sale la agenda de mañana
   assert.ok(env.sent.some((m) => m.template === 'staff_daily' && m.to === 'equipo@ejemplo.com'));
   const t = await call(st, env, 'POST', '/api/admin/emails/test', { template: 'all', to: 'yo@ejemplo.com' }, st.staff[0]);
-  assert.equal(t.sent, 22);
+  assert.equal(t.sent, 23);
   assert.ok(env.sent.filter((m) => m.to === 'yo@ejemplo.com').every((m) => m.subject.startsWith('[Prueba]')));
 });
 
@@ -379,4 +379,34 @@ test('un solo WhatsApp en toda la web', async () => {
   assert.ok(site.services.every((s) => s.whatsapp === undefined));
   const r = await call(st, env, 'POST', '/api/bookings', { service_id: st.services[0].id, date: '2026-11-04', time: '10:00', ...who });
   assert.equal(r.booking.whatsapp, st.settings.site.whatsapp);
+});
+
+test('la clienta cambia su turno desde el link y lo agrega al calendario', async () => {
+  const st = bare(), env = makeEnv();
+  const svc = st.services.find((s) => s.slug === 'ritual-esencial');
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-05', time: '10:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
+  let b = (await call(st, env, 'GET', '/api/bookings/' + r.booking.token)).booking;
+  assert.equal(b.can_reschedule, true);
+  assert.ok(b.calendar.google.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE'));
+  assert.ok(b.calendar.google.includes('dates=20261105T130000Z/20261105T140000Z')); // 10 h en La Plata = 13 h UTC
+  assert.ok(b.calendar.ics.endsWith(`/api/bookings/${r.booking.token}/calendar.ics`));
+  // Disponibilidad sin contar su propio turno: el mismo día a las 10:30 aparece libre.
+  const av = await call(st, env, 'GET', `/api/availability?service=${svc.id}&from=2026-11-05&days=1&ignore=${r.booking.token}`);
+  assert.ok(av.days[0].slots.includes('10:30'));
+  env.sent.length = 0;
+  b = (await call(st, env, 'POST', `/api/bookings/${r.booking.token}/reschedule`, { date: '2026-11-06', time: '11:00' })).booking;
+  assert.equal(b.start, '2026-11-06 11:00');
+  assert.ok(env.sent.some((m) => m.template === 'booking_rescheduled' && m.to === who.email && m.html.includes('calendar.google.com')));
+  assert.ok(st.bookings[0].history.some((h) => h.text.includes('La clienta cambió el turno')));
+  // Un horario ocupado no se puede tomar.
+  await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-07', time: '10:00', ...who, email: 'otra@ejemplo.com' });
+  await assert.rejects(call(st, env, 'POST', `/api/bookings/${r.booking.token}/reschedule`, { date: '2026-11-07', time: '10:00' }), (e) => e.status === 409);
+  // El .ics y el email de confirmación con el link para cambiarlo.
+  const { bookingIcs } = await import('../server/core/spa-core.js');
+  const ics = bookingIcs(st, env, st.bookings[0]);
+  assert.ok(ics.includes('DTSTART:20261106T140000Z') && ics.includes('BEGIN:VALARM'));
+  // Con menos de las horas de cancelación, ya no se puede cambiar.
+  env.advance(3 * 864e5);
+  assert.equal((await call(st, env, 'GET', '/api/bookings/' + r.booking.token)).booking.can_reschedule, false);
 });
