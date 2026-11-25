@@ -9,6 +9,8 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SOLO = /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
 // Meta Pixel: eventos estándar (si el pixel está cargado).
 const px = (ev, data) => { try { window.fbq?.('track', ev, data); } catch {} };
+// Una sola vez por turno o gift card en este navegador (para no contar dos veces si vuelven a abrir el link).
+const pxOnce = (key, ev, data) => { try { const k = 'px:' + key; if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch {} px(ev, data); };
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -448,10 +450,10 @@ async function submitBooking() {
   try {
     const items = bk.items.map((it) => ({ service_id: it.service.id, date: it.date, time: it.time, pro_id: it.pro || null }));
     const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod });
-    px('Schedule', { content_name: bk.items.map((it) => it.service.name).join(' + '), value: bk.items.reduce((a, it) => a + (it.service.price || 0), 0), currency: 'ARS' });
+    px('InitiateCheckout', { content_name: bk.items.map((it) => it.service.name).join(' + '), num_items: bk.items.length, value: bk.items.reduce((a, it) => a + (it.service.price || 0), 0), currency: 'ARS' });
     bk.items = [];
     if (r.pay_url) { bk.sending = false; goPay(r.pay_url); return; }
-    showBooking(r.booking.token, r.booking);
+    showBooking(r.booking.token, r.booking, true);
   } catch (e) {
     bk.sending = false;
     if (e.data?.taken && bk.items.length === 1) { editItem(0); bk.error = e.message; return; }
@@ -477,7 +479,7 @@ function transferBlock(b) {
       ${T.can_mp ? `<button class="btn" data-paymp="${esc(b.token)}">Prefiero pagar con Mercado Pago</button>` : ''}
     </div></div>`;
 }
-async function showBooking(token, pre) {
+async function showBooking(token, pre, track = false) {
   setHash('#turno/' + token);
   openDrawer(`${head('Tu turno')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Tu turno' });
   try {
@@ -485,6 +487,8 @@ async function showBooking(token, pre) {
     const okS = ['confirmed', 'completed'].includes(b.status), badS = ['cancelled', 'expired', 'no_show'].includes(b.status);
     const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
     const many = b.items?.length > 1;
+    // Schedule: solo al volver del pago (o al reservar sin seña) con el turno ya confirmado.
+    if (track && b.status === 'confirmed') pxOnce('turno:' + b.token, 'Schedule', { content_name: many ? b.items.map((it) => it.service_name).join(' + ') : b.service_name, value: b.price || 0, currency: 'ARS' });
     $('#drawer').innerHTML = `${head(many ? 'Tu reserva' : 'Tu turno')}<div class="dbody"><div class="status">
       <span class="pill ${okS ? 'ok' : badS ? 'bad' : ''}">${esc(b.status_label)}</span>
       <div class="big">${b.status === 'confirmed' ? '¡Te esperamos!' : b.status === 'pending_payment' ? 'Falta la seña' : b.status === 'pending_transfer' ? 'Falta la transferencia' : esc(b.service_name)}</div>
@@ -615,11 +619,13 @@ async function submitGift() {
     gf.sending = false; goPay(r.pay_url);
   } catch (e) { gf.sending = false; gf.errors = e.data?.errors || {}; gf.error = Object.keys(gf.errors).length ? '' : e.message; renderGift(); }
 }
-async function showGift(token, pre) {
+async function showGift(token, pre, track = false) {
   setHash('#gift/' + token);
   openDrawer(`${head('Gift card')}<div class="dbody"><div class="spinner" style="margin-top:20px"></div></div>`, { label: 'Gift card' });
   try {
     const g = pre || (await api('/api/giftcards/' + encodeURIComponent(token))).gift;
+    // Purchase: al volver del pago con la gift card ya activa (una vez por gift card).
+    if (track && g.status === 'active' && g.token) pxOnce('gift:' + g.token, 'Purchase', { content_name: 'Gift card' + (g.service_name ? ' · ' + g.service_name : ''), content_type: 'product', value: g.amount || 0, currency: 'ARS' });
     const exp = g.expires_at ? new Date(g.expires_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     $('#drawer').innerHTML = `${head('Gift card')}<div class="dbody"><div class="status">
       <span class="pill ${g.status === 'active' ? 'ok' : ['expired', 'cancelled', 'used'].includes(g.status) ? 'bad' : ''}">${esc(g.status_label)}</span>
@@ -646,7 +652,7 @@ async function simulate(kind, token, result) {
   try {
     const r = await api('/api/pay/simulate', { kind, token, result });
     if (result === 'rejected') toast('Pago rechazado (prueba)');
-    if (kind === 'gift') showGift(token, r.gift); else showBooking(token, r.booking);
+    if (kind === 'gift') showGift(token, r.gift, true); else showBooking(token, r.booking, true);
   } catch (e) { toast(e.message); }
 }
 
@@ -914,7 +920,7 @@ async function handleReturn() {
   if (p.get('simulado')) { showSimPay(kind, token); return true; }
   const pid = p.get('payment_id') || p.get('collection_id');
   if (pid) { try { await api('/api/pay/confirm', { kind, token, payment_id: pid }); } catch {} }
-  if (kind === 'gift') showGift(token); else showBooking(token);
+  if (kind === 'gift') showGift(token, null, true); else showBooking(token, null, true);
   if (p.get('status') === 'rejected' || p.get('collection_status') === 'rejected') toast('El pago no se aprobó. Podés intentar de nuevo.');
   return true;
 }
