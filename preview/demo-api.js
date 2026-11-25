@@ -1,7 +1,7 @@
 // Servidor de prueba para la vista previa: usa la misma lógica que el servidor real (spa-core),
 // pero guarda todo en este navegador. Mercado Pago y los emails quedan simulados.
 const C = window.__CORE;
-const KEY = 'casa-samadhi-demo-v4';
+const KEY = 'casa-samadhi-demo-v5';
 const DEMO_USERS = window.__CASA_DEMO_USERS;
 const base = location.href.split('#')[0].split('?')[0].replace(/\/$/, '');
 const env = {
@@ -36,27 +36,33 @@ function seedDemo() {
   st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'ALIAS.DE.PRUEBA', holder: 'Casa Samadhi (datos de prueba)', bank: 'Banco de ejemplo' };
   // Turnos de ejemplo: los últimos 90 días y las próximas dos semanas.
   let seed = 11; const r = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-  const names = ['Lucía Fernández', 'Carolina Gómez', 'Florencia Díaz', 'Julieta Romero', 'Agustina Pereyra', 'Sofía Martínez', 'Valeria Sosa', 'Camila Benítez', 'Mariana López', 'Paula Acosta', 'Natalia Ruiz', 'Victoria Medina'];
+  const names = ['Lucía Fernández', 'Carolina Gómez', 'Florencia Díaz', 'Julieta Romero', 'Agustina Pereyra', 'Sofía Martínez', 'Valeria Sosa', 'Camila Benítez', 'Mariana López', 'Paula Acosta', 'Natalia Ruiz', 'Victoria Medina',
+    'Rocío Giménez', 'Milagros Torres', 'Antonella Ríos', 'Daiana Morales', 'Brenda Castro', 'Micaela Suárez', 'Lorena Vega', 'Silvina Rojas', 'Gabriela Molina', 'Ana Clara Ortiz', 'Josefina Luna', 'Celeste Ramírez', 'Pilar Domínguez', 'Melina Navarro', 'Romina Ferreyra', 'Guadalupe Sánchez'];
+  const mail = (n) => n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ /g, '.') + '@ejemplo.com';
+  const nowL = C.localNow(env), nowHM = `${String(nowL.getUTCHours()).padStart(2, '0')}:${String(nowL.getUTCMinutes()).padStart(2, '0')}`;
+  const TYP = ['10:00', '11:00', '11:30', '13:00', '14:00', '15:00', '16:30', '17:30', '18:00'];
   const online = st.services.filter((s) => s.mode === 'online');
   const today = C.dayKey(C.localNow(env));
   for (let i = -90; i <= 14; i++) {
     const date = C.addDays(today, i);
-    const n = Math.floor(r() * 4);
+    const n = 1 + Math.floor(r() * 5);
     for (let k = 0; k < n; k++) {
       const s = online[Math.floor(r() ** 1.6 * online.length)];
-      let slots = C.slotsFor(st, env, s, date, { staff: true });
+      let slots = i === 0 ? TYP.filter((t) => !st.bookings.some((b) => b.start === `${date} ${t}` && b.resource === s.resource)) : C.slotsFor(st, env, s, date, { staff: true });
       // En días pasados ya no hay horarios libres: se usan horarios típicos (de lunes a sábado).
       if (!slots.length && i < 0 && new Date(date + 'T12:00:00Z').getUTCDay() !== 0) slots = ['10:00', '11:30', '13:00', '15:00', '16:30', '17:30'].filter((t) => !st.bookings.some((b) => b.start === `${date} ${t}` && b.resource === s.resource));
       if (!slots.length) continue;
       const time = slots[Math.floor(r() * slots.length)];
       const name = names[Math.floor(r() * names.length)];
       const dep = Math.round(s.price * 0.3 / 100) * 100;
-      const past = i < 0 || (i === 0 && false);
+      const past = i < 0 || (i === 0 && time < nowHM);
       const status = past ? (r() < 0.08 ? 'no_show' : r() < 0.06 ? 'cancelled' : 'completed') : 'confirmed';
-      const created = new Date(C.localToMs(`${date} ${time}`) - (2 + r() * 8) * 864e5).toISOString();
+      // Se reservó (y pagó la seña) entre 2 y 9 días antes, en horario normal, y nunca después de ahora.
+      const cDay = C.addDays(date, -(2 + Math.floor(r() * 8))), cHM = `${String(9 + Math.floor(r() * 13)).padStart(2, '0')}:${['05', '20', '35', '50'][Math.floor(r() * 4)]}`;
+      const created = new Date(Math.min(C.localToMs(`${cDay} ${cHM}`), Date.now() - (1 + r() * 20) * 3600e3)).toISOString();
       st.bookings.push({ id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2), service_id: s.id, service_name: s.name + (s.tag && s.category === 'manicuria' ? ` · ${s.tag}` : ''), resource: s.resource,
-        start: `${date} ${time}`, duration: s.duration, price: s.price, deposit: dep, deposit_due: dep, deposit_paid: r() < 0.85 ? dep : 0, gift_id: null, gift_code: '', gift_applied: 0,
-        name, email: name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(' ', '.') + '@ejemplo.com', phone: `221 5${Math.floor(10 + r() * 89)}-${Math.floor(1000 + r() * 8999)}`, notes: '', status, source: r() < 0.75 ? 'web' : 'panel', created_at: created,
+        start: `${date} ${time}`, duration: s.duration, price: s.price, deposit: dep, deposit_due: dep, deposit_paid: r() < 0.85 ? dep : 0, deposit_at: created, gift_id: null, gift_code: '', gift_applied: 0,
+        name, email: mail(name), phone: `221 5${Math.floor(10 + r() * 89)}-${Math.floor(1000 + r() * 8999)}`, notes: '', status, source: r() < 0.75 ? 'web' : 'panel', created_at: created,
         hold_until: created, reminded: past, thanked: past, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: created, text: 'Reserva de ejemplo' }] });
     }
   }
@@ -110,6 +116,82 @@ function seedDemo() {
     pro_id: p1?.id || null, pro_name: p1?.name || '', start: `${t} ${tt}`, duration: s1.duration, price: s1.price, deposit: 18000, deposit_due: 18000, deposit_paid: 0, gift_id: null, gift_code: '', gift_applied: 0,
     name: 'Martina Herrera', email: 'martina.herrera@ejemplo.com', phone: '221 555-6611', notes: '', status: 'pending_transfer', source: 'web', created_at: cr, pay_method: 'transfer', transfer_notified: new Date(Date.now() - 3600e3).toISOString(),
     hold_until: new Date(Date.now() + 10 * 3600e3).toISOString(), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: cr, text: 'Reservado: seña de $ 18.000 por transferencia, a verificar' }, { at: new Date(Date.now() - 3600e3).toISOString(), text: 'La clienta avisó que ya transfirió' }] });
+
+  // ── Más datos de prueba: CRM completo, fotos, clientas cargadas a mano, gift cards, eventos y caja ──
+  const pick = (a) => a[Math.floor(r() * a.length)];
+  const barrios = ['Centro, La Plata', 'City Bell', 'Gonnet', 'Tolosa', 'Los Hornos', 'Villa Elisa', 'Berisso', 'Ensenada', 'Barrio Norte, La Plata', 'La Loma', 'Villa Castells', 'Ringuelet', 'Meridiano V'];
+  const prefs = ['Presión suave en el cuello · aceite de lavanda', 'Prefiere té verde sin azúcar', 'Le gustan los tonos nude y rosados', 'Uñas cortas, forma almendra', 'Alérgica al látex', 'Cuero cabelludo sensible: agua tibia, no caliente', 'Prefiere música suave y poca charla', 'Café con leche de almendras', 'Le gusta probar colores de temporada', 'Embarazada: evitar aceites esenciales fuertes'];
+  const notesL = ['Muy puntual. Le gusta reservar los sábados.', 'Vino recomendada por una amiga.', 'Ofrecerle el ritual profundo la próxima.', 'Siempre pide a la misma asesora.', 'Le regalaron una gift card para su cumple.', 'Pregunta por los talleres del patio.', ''];
+  const tagsL = ['VIP', 'Frecuente', 'Nueva', 'Regalo', 'Sensible', 'Embarazada'];
+  const bday = () => `${1972 + Math.floor(r() * 30)}-${String(1 + Math.floor(r() * 12)).padStart(2, '0')}-${String(1 + Math.floor(r() * 28)).padStart(2, '0')}`;
+  const thisMonth = today.slice(5, 7);
+  const admU = st.staff.find((u) => u.role === 'admin'), recU = st.staff.find((u) => u.role === 'staff');
+  names.forEach((n, i) => {
+    const k = mail(n);
+    if (st.crm[k]) return;
+    const visits = st.bookings.filter((b) => b.email === k && b.status === 'completed').length;
+    const tags = [...new Set([visits >= 6 ? 'Frecuente' : visits <= 1 ? 'Nueva' : '', r() < 0.15 ? 'VIP' : '', r() < 0.12 ? pick(tagsL) : ''].filter(Boolean))];
+    // Algunas cumplen este mes, para ver el filtro de cumpleaños.
+    const birthday = i % 6 === 0 ? `${1980 + (i % 20)}-${thisMonth}-${String(5 + (i % 20)).padStart(2, '0')}` : bday();
+    st.crm[k] = { birthday, address: pick(barrios), tags, preferences: r() < 0.7 ? pick(prefs) : '', notes: pick(notesL), photos: [], updated_at: new Date(Date.now() - (2 + i) * 864e5).toISOString(), updated_by: i % 2 ? 'Recepción (prueba)' : 'Administración (prueba)' };
+  });
+  // Fotos de antes y después en las clientas de manicuría (las hace Belén).
+  const fotos = { 'esmaltado-semipermanente': ['media/trabajos/semi-verde-oliva.webp', 'media/trabajos/semi-negro-glitter.webp'], 'soft-gel': ['media/trabajos/softgel-rosa-glitter.webp'], dipping: ['media/trabajos/dipping-blanco-lechoso.webp'] };
+  const slugOf = Object.fromEntries(st.services.map((x) => [x.id, x.slug]));
+  st.bookings.filter((b) => b.status === 'completed' && fotos[slugOf[b.service_id]] && r() < 0.35).slice(-24).forEach((b, i) => {
+    const m = st.crm[b.email] || (st.crm[b.email] = { notes: '', preferences: '', birthday: '', tags: [], photos: [] });
+    m.photos = m.photos || [];
+    if (m.photos.length >= 3) return;
+    m.photos.unshift({ id: 'fdemo' + i, after: pick(fotos[slugOf[b.service_id]]), before: '', note: b.service_name, date: b.start.slice(0, 10), by: b.pro_name || 'Belén', at: new Date(C.localToMs(b.start) + 3600e3).toISOString() });
+  });
+  // Clientas cargadas a mano (todavía no reservaron).
+  [['Marta Quiroga', '221 555-7788', 'marta.quiroga@ejemplo.com', 'City Bell', 'Llamó para consultar por el ritual profundo. Volver a escribirle.'],
+   ['Norma Bustos', '221 555-3344', '', 'Tolosa', 'Vino a la cafetería y preguntó por pedicuría.'],
+   ['Inés Castillo', '221 555-9090', 'ines.castillo@ejemplo.com', 'Gonnet', 'Quiere regalarle una gift card a la hermana.']].forEach(([name, phone, email, address, notes], i) => {
+    const k = email || 'tel:' + phone.replace(/\D/g, '');
+    st.crm[k] = { manual: true, name, phone, email, address, birthday: bday(), notes, preferences: '', tags: ['Nueva'], photos: [], created_at: new Date(Date.now() - (3 + i * 4) * 864e5).toISOString(), updated_at: new Date(Date.now() - (3 + i * 4) * 864e5).toISOString(), updated_by: 'Recepción (prueba)' };
+  });
+  // Más clientas con cuenta en la web.
+  [['Rocío Giménez', '221 555-2020', '1991-04-18', 'Villa Elisa'], ['Camila Benítez', '221 555-3030', '1995-09-02', 'Centro, La Plata']].forEach(([name, phone, birthday, address], i) => {
+    st.customers.push({ id: (st.ids.customer = (st.ids.customer || 0) + 1), email: mail(name), name, phone, birthday, address, password_hash: 'demo$Clienta.Samadhi26', created_at: new Date(Date.now() - (60 + i * 30) * 864e5).toISOString() });
+  });
+  // Más gift cards: una usada y una que vence pronto.
+  const g1 = new Date(Date.now() - 150 * 864e5).toISOString(), g2 = new Date(Date.now() - 170 * 864e5).toISOString();
+  st.giftcards.push({ id: ++st.ids.gift, code: 'CS-DEMO-4USD', token: 'demo4' + Math.random().toString(36).slice(2), amount: 45000, balance: 0, service_id: null, service_name: '', buyer_name: 'Pablo Ríos', buyer_email: 'pablo.rios@ejemplo.com', to_name: 'Antonella', to_email: '', message: '¡Feliz aniversario!', status: 'used', source: 'web', created_at: g1, paid_at: g1, expires_at: new Date(Date.now() + 30 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-3', history: [{ at: g1, amount: 45000, note: 'Gift card de ejemplo' }, { at: new Date(Date.now() - 100 * 864e5).toISOString(), amount: -45000, note: 'Usada en un turno' }] });
+  st.giftcards.push({ id: ++st.ids.gift, code: 'CS-DEMO-5VNC', token: 'demo5' + Math.random().toString(36).slice(2), amount: 60000, balance: 60000, service_id: null, service_name: 'Ritual esencial', buyer_name: 'Graciela Paz', buyer_email: 'graciela.paz@ejemplo.com', to_name: 'Melina', to_email: '', message: 'Para que te relajes', status: 'active', source: 'web', created_at: g2, paid_at: g2, expires_at: new Date(Date.now() + 12 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-4', history: [{ at: g2, amount: 60000, note: 'Gift card de ejemplo' }] });
+  // Eventos próximos (en el patio).
+  [[6, 'Taller de skincare natural', '17:00', '19:00', 15000, 'Aprendé a armar tu rutina con productos naturales. Incluye merienda. En el patio.'],
+   [13, 'Merienda y círculo de mujeres', '18:00', '20:00', 12000, 'Un encuentro para compartir, con té, pastelería de la casa y música en vivo.'],
+   [20, 'Taller de cerámica', '16:00', '18:30', 25000, 'Modelado a mano y esmaltado. Materiales incluidos.']].forEach(([d, title, from, to, price, description]) => {
+    st.events.push({ id: ++st.ids.event, title, date: C.addDays(today, d), from, to, price, description, active: true, image: '' });
+  });
+  // Caja de los últimos 14 días: fondo inicial, cobros de saldos, egresos y cierres (hoy, abierta).
+  st.cash = st.cash || { moves: [], closings: [] }; st.ids.cash = st.ids.cash || 0;
+  const addMove = (date, type, method, amount, concept, booking_id = null, by = recU.name, hm = '10:00') => st.cash.moves.push({ id: ++st.ids.cash, date, at: new Date(C.localToMs(`${date} ${hm}`)).toISOString(), type, method, amount, concept, booking_id, by });
+  const methods = ['efectivo', 'efectivo', 'efectivo', 'transferencia', 'transferencia', 'debito', 'mercadopago'];
+  let leaves = 0;
+  for (let i = -14; i <= 0; i++) {
+    const date = C.addDays(today, i);
+    if (i === -14) addMove(date, 'in', 'efectivo', 20000, 'Fondo inicial de caja', null, admU.name, '09:30');
+    // Saldos cobrados en la casa de los turnos realizados ese día.
+    for (const b of st.bookings.filter((x) => x.start.startsWith(date) && x.status === 'completed')) {
+      const rest = Math.max(0, b.price - (b.deposit_paid || 0) - (b.gift_applied || 0));
+      if (rest) addMove(date, 'in', pick(methods), rest, `Saldo ${b.code} · ${b.service_name} · ${b.name}`, b.id, recU.name, b.start.slice(11));
+    }
+    if (new Date(date + 'T12:00:00Z').getUTCDay() === 0) continue;
+    if (r() < 0.45) addMove(date, 'in', 'efectivo', 4000 + Math.round(r() * 8) * 1000, pick(['Venta de esmaltes', 'Venta de aceite para cutículas', 'Venta de vela aromática']), null, recU.name, '12:30');
+    if (r() < 0.4) addMove(date, 'out', 'efectivo', 6000 + Math.round(r() * 9) * 1000, pick(['Café y pastelería', 'Insumos de manicuría', 'Flores para la recepción', 'Artículos de limpieza']), null, recU.name, '11:15');
+    if (i % 7 === 0 && i < 0) addMove(date, 'out', 'transferencia', 35000 + Math.round(r() * 5) * 5000, 'Productos de head spa (proveedor)', null, admU.name, '15:00');
+    if (i === 0) break; // hoy: la caja queda abierta
+    const day = st.cash.moves.filter((m) => m.date === date && m.method === 'efectivo');
+    const cin = day.filter((m) => m.type === 'in').reduce((a, m) => a + m.amount, 0), cout = day.filter((m) => m.type === 'out').reduce((a, m) => a + m.amount, 0);
+    const expected = leaves + cin - cout;
+    if (!cin && !cout) continue;
+    const diff = r() < 0.75 ? 0 : pick([-500, -1000, 300, 500]);
+    const counted = Math.max(0, expected + diff), withdrawn = Math.max(0, Math.floor((counted - 20000) / 1000) * 1000);
+    st.cash.closings.push({ id: ++st.ids.cash, date, at: new Date(C.localToMs(`${date} 19:30`)).toISOString(), by: recU.name, opening: leaves, cash_in: cin, cash_out: cout, expected, counted, diff: counted - expected, withdrawn, leaves: counted - withdrawn, notes: diff < 0 ? 'Faltó cambio' : diff > 0 ? 'Sobró de una propina' : '' });
+    leaves = counted - withdrawn;
+  }
   // Historial de cambios de ejemplo
   const adm = st.staff.find((u) => u.role === 'admin'), rec = st.staff.find((u) => u.role === 'staff'), ana = pros[0];
   const log = (u, h, action) => st.audit.push({ id: (st.ids.audit = (st.ids.audit || 0) + 1), at: new Date(Date.now() - h * 3600e3).toISOString(), user_id: u.id, user: u.name, role: u.role, action });
@@ -118,6 +200,10 @@ function seedDemo() {
   log(adm, 200, 'Cambió la configuración: medios de pago');
   log(rec, 50, 'Cargó el turno de un llamado por WhatsApp');
   log(ana, 30, 'Ingresó al panel');
+  log(rec, 26, 'Cargó a la clienta Marta Quiroga');
+  log(ana, 20, 'Sumó fotos de antes y después a Lucía Fernández');
+  log(rec, 18, `Cerró la caja del ${C.addDays(today, -1)}`);
+  log(adm, 6, 'Sumó un trabajo (antes y después) a Soft gel');
   st.audit.sort((a, c) => a.at.localeCompare(c.at));
   return st;
 }
