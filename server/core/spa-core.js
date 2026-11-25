@@ -105,6 +105,13 @@ const MIGRATIONS = {
     const i = faq ? faq.findIndex((f) => f.q === nueva.q) : -1;
     if (i >= 0) faq[i] = { ...nueva };
   },
+  'rituales-placas-2026-11': (st) => {
+    // Las explicaciones de cada paso de los rituales, tal como están en las placas.
+    for (const slug of ['ritual-esencial', 'ritual-profundo']) {
+      const s = st.services.find((x) => x.slug === slug), def = SERVICES.find((x) => x.slug === slug);
+      if (s) s.includes = structuredClone(def.includes);
+    }
+  },
 };
 function migrate(st) {
   st.meta.migrations = st.meta.migrations || [];
@@ -683,7 +690,7 @@ function serviceInput(st, body, prev = {}) {
   if (body.duration !== undefined) s.duration = Math.max(0, Math.min(480, Math.round(Number(body.duration) || 0)));
   if (body.price !== undefined) s.price = body.price === '' || body.price === null ? null : Math.max(0, Math.round(Number(body.price) || 0));
   if (body.price_transfer !== undefined) s.price_transfer = body.price_transfer === '' || body.price_transfer === null ? null : Math.max(0, Math.round(Number(body.price_transfer) || 0)) || null;
-  if (body.includes !== undefined) s.includes = (Array.isArray(body.includes) ? body.includes : String(body.includes).split('\n')).map((x) => clean(x, 120)).filter(Boolean).slice(0, 12);
+  if (body.includes !== undefined) s.includes = (Array.isArray(body.includes) ? body.includes : String(body.includes).split('\n')).map((x) => clean(x, 240)).filter(Boolean).slice(0, 12);
   if (body.days !== undefined) s.days = (body.days || []).map(Number).filter((d) => d >= 0 && d <= 6);
   for (const k of ['visible', 'featured']) if (body[k] !== undefined) s[k] = !!body[k];
   if (body.position !== undefined) s.position = Number(body.position) || 0;

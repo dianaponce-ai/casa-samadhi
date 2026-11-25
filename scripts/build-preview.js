@@ -31,7 +31,7 @@ const j = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 
 const page = `<title>Casa Samadhi · Café & Spa</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Jost:wght@300;400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Italiana&family=Cormorant+Garamond:ital,wght@0,400..700;1,400..700&family=Jost:wght@300..600&display=swap">
 <style>
 ${read('public/assets/spa.css')}
 </style>

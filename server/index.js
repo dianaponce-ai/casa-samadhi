@@ -102,6 +102,8 @@ app.use('/api', async (req, res, next) => {
 });
 
 app.use('/admin', express.static(path.join(ROOT, 'admin'), { index: 'index.html' }));
+// Turnero solo (el link para Instagram): la misma página, que se abre directo en la reserva.
+app.get(['/turnos', '/turnos/'], (req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
 app.use(express.static(path.join(ROOT, 'public'), { extensions: ['html'], maxAge: '1h' }));
 
 app.use((err, req, res, next) => {
