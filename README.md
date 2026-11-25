@@ -18,7 +18,7 @@ Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/sam
 - **Horarios**: Panel → Turnos y servicios → Horarios y bloqueos es el horario general de la casa (días y franjas, cierres y salas), con un resumen de cuándo atiende cada asesora. Cada asesora carga sus días y horarios y sus días libres en **Mis días y horarios** (o administración desde su ficha). El turnero solo ofrece un horario si la casa está abierta y alguna asesora que hace el servicio trabaja y está libre; si alguien marca un día libre con turnos tomados, el panel los lista para reprogramarlos.
 - **Páginas de gracias** (para medir conversiones): `/gracias-turno` al reservar (o al volver de pagar la seña) y `/gracias-comprobante` al subir el comprobante de la transferencia. Disparan los eventos del Meta Pixel `Schedule` y `ComprobanteEnviado`. El código del turno no va en la dirección.
 - **Comprobante de transferencia**: la clienta lo sube (foto o PDF) desde la página del turno; queda en el turno del panel.
-- **Integración con Nifty** (Configuración): cada turno nuevo o que cambia se manda al embudo de Casa Samadhi en Nifty, firmado con la clave del cliente y sin datos de las clientas, con el canal de origen (Meta, Google u Otro, según los UTM, fbclid o gclid con los que llegó). Se envía cada minuto, con reintentos.
+- **Integración con Nifty** (Configuración): cada turno nuevo o que cambia se manda al embudo de Casa Samadhi en Nifty, firmado con la clave del cliente y sin datos de las clientas, con el canal de origen (Meta, Google u Otro, según los UTM, fbclid o gclid con los que llegó). En Vercel sale en el momento; en un servidor propio, cada minuto. Con reintentos.
 - **Turnos en el calendario**: la página del turno y los emails traen Agregar a Google Calendar y el archivo .ics (Apple, Outlook). Desde el link del email la clienta cambia el día u horario o cancela.
 - **Panel** (`/admin`, o desde el ícono de la persona en la web): menú a la izquierda en tres secciones — **Turnos** (agenda, turnos, horarios y bloqueos, servicios, gift cards, eventos), **CRM** (clientas, emails, arrepentimientos) y **Administración** (resumen, caja y facturación, asesoras de belleza, usuarios, textos de la web, configuración, historial).
 - **Roles**: **Web master** y **Administración** ven todo; **Recepción** ve turnos, agenda, clientas, servicios, horarios, gift cards, eventos y la caja; cada **Asesora de belleza** ve sus turnos, sus clientas y sus comisiones. En Usuarios se crean todos los que hagan falta de cada rol (solo un web master crea otro web master). El web master (diana@nifty-agency.com) se crea sin contraseña: la define con "¿Olvidaste tu contraseña?", con `WEBMASTER_PASSWORD` en el `.env` o con `npm run create-admin`.
@@ -35,7 +35,7 @@ Mismo diseño que la tienda [Samadhi Style](https://github.com/dianaponce-ai/sam
 | Clienta | clienta@casasamadhi.demo | Clienta.Samadhi26 |
 
 Se ingresa desde el ícono de la persona (**Mi cuenta**). Si alguien se olvida la contraseña (clienta o equipo), pide un link por email que vale 1 hora y se usa una sola vez: la clienta ve sus turnos y gift cards; el equipo entra al panel. También en `/admin`.
-En la demo de Vercel ya vienen cargados. En el servidor real se crean con `npm run demo-users` y **se borran antes de abrir al público** con `npm run demo-users -- --borrar`.
+En la demo ya vienen cargados. En el servidor real se crean con `npm run demo-users` y **se borran antes de abrir al público** con `npm run demo-users -- --borrar`.
 
 ## Probarlo en tu compu
 ```bash
@@ -46,8 +46,30 @@ npm start              # http://localhost:3001 y el panel en /admin
 Sin `MP_ACCESS_TOKEN` los pagos son simulados; sin `SMTP_URL` los emails no salen pero se ven en el panel (sección Emails).
 
 ## Publicarlo
-- **Demo en Vercel** (lo que se ve en `casa-samadhi.vercel.app`): importá el repo en Vercel y dejá todo como viene; lee `vercel.json`. Es una versión de muestra que guarda los datos en el navegador, con pagos simulados y un acceso al panel en el pie.
-- **Versión real**: necesita un servidor Node 22 con disco (Railway, Render, un VPS…) porque guarda los turnos en `data/casa-samadhi.db`. Completá el `.env`, configurá en Mercado Pago el webhook `PUBLIC_URL/api/webhooks/mp` (evento Pagos) y hacé copias de seguridad de la carpeta `data`.
+### En Vercel con Supabase (la versión real)
+Vercel arma la web según haya o no base de datos (`npm run build:vercel`):
+- **Con base de datos** (`POSTGRES_URL` o `DATABASE_URL`): la versión real. La web, el turnero, las páginas de gracias y el panel son archivos; `/api` y `/uploads` los atiende la función `api/index.js` (el mismo servidor). Los datos, las fotos y los comprobantes quedan en Postgres.
+- **Sin base de datos**: la demo de siempre (datos de ejemplo en el navegador, pagos simulados).
+
+Pasos:
+1. En Vercel → el proyecto → **Storage** → **Connect Database** → **Supabase** (crear una nueva, región **South America (São Paulo)**, la misma que la función: `regions: gru1` en `vercel.json`) y conectarla a Production y Preview. Eso carga `POSTGRES_URL` sola, sin copiar claves.
+2. En **Settings → Environment Variables** (Production):
+   - `ADMIN_EMAIL` y `ADMIN_PASSWORD`: el primer usuario de administración (o `WEBMASTER_PASSWORD` para el web master).
+   - `CRON_SECRET`: una frase larga al azar (protege las tareas programadas).
+   - `SMTP_URL` y `MAIL_FROM`: para que salgan los emails.
+   - `MP_ACCESS_TOKEN`: Mercado Pago real (sin esto, los pagos son simulados).
+   - `PUBLIC_URL`: el dominio con https (si no, se usa el dominio de producción del proyecto).
+   - `SESSION_SECRET` es opcional: si falta, se crea una y queda en la base.
+3. **Redeploy**. En el primer pedido se crean las tablas (`cs_state`, `cs_files`, `cs_kv`, con RLS activado para que solo entre el servidor) con los servicios, las asesoras y la configuración inicial.
+4. Mercado Pago: webhook `PUBLIC_URL/api/webhooks/mp` (evento Pagos). Nifty: Panel → Configuración → Integración con Nifty.
+
+Cómo funciona sin un servidor siempre encendido: cada cambio se hace con un bloqueo de la base (dos reservas simultáneas nunca toman el mismo horario) y cada copia del servidor recarga si otra guardó algo. Los turnos van a Nifty **en el momento** en que cambian; las tareas (liberar reservas sin seña, recordatorios, gracias, vencimientos) corren con las visitas (como mucho una vez por minuto) y con el cron diario de `vercel.json` (en Vercel Pro se puede poner cada 5 minutos). Los comprobantes en PDF van hasta 3 MB (Vercel acepta pedidos de hasta 4,5 MB).
+Copias de seguridad: Supabase las hace a diario en su plan Pro; en el gratis, conviene exportar la base de vez en cuando (Supabase → Database → Backups).
+Para verificar el certificado de Supabase, cargá su certificado (Supabase → Database → SSL) en `DATABASE_CA`; sin eso la conexión va cifrada igual.
+Pruebas contra Postgres: `TEST_DATABASE_URL=postgres://… npm test` (con una base vacía de prueba).
+
+### En un servidor propio
+Necesita Node 22 con disco (Railway, Render, un VPS…): sin `DATABASE_URL` guarda los turnos en `data/casa-samadhi.db` y las fotos en `data/uploads`. Completá el `.env`, configurá en Mercado Pago el webhook `PUBLIC_URL/api/webhooks/mp` (evento Pagos) y hacé copias de seguridad de la carpeta `data`. También funciona con `DATABASE_URL` (Postgres).
 
 ## Para revisar antes de abrir
 - Horarios de atención (vienen de lunes a sábado de 10 a 19): Panel → Horarios y bloqueos.

@@ -2,12 +2,50 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "npm install",
-  "buildCommand": "npm run build:demo",
-  "outputDirectory": "dist/demo",
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "dist/vercel",
   "cleanUrls": true,
-  "redirects": [{ "source": "/turnos/", "destination": "/turnos", "permanent": false }],
+  "regions": [
+    "gru1"
+  ],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api?__route=api/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "/api?__route=uploads/:path*"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "17 11 * * *"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/turnos/",
+      "destination": "/turnos",
+      "permanent": false
+    }
+  ],
   "headers": [
-    { "source": "/media/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
-    { "source": "/(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }] }
+    {
+      "source": "/media/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
   ]
 }

@@ -10,7 +10,14 @@ const env = (k, d = '') => (process.env[k] ?? d).toString().trim();
 
 export const config = {
   port: Number(env('PORT', '3001')),
-  publicUrl: env('PUBLIC_URL', 'http://localhost:3001').replace(/\/$/, ''),
+  // En Vercel, si no se carga PUBLIC_URL, se usa el dominio de producción del proyecto.
+  publicUrl: (env('PUBLIC_URL') || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? 'https://' + process.env.VERCEL_PROJECT_PRODUCTION_URL : 'http://localhost:3001')).replace(/\/$/, ''),
+  // Base de datos Postgres (Supabase, Neon…). Sin esto se usa SQLite en DATA_DIR.
+  databaseUrl: env('DATABASE_URL') || env('POSTGRES_URL'),
+  databaseCa: env('DATABASE_CA'),
+  // En Vercel no hay un proceso siempre encendido: las tareas corren con cada visita y con el cron.
+  serverless: !!process.env.VERCEL,
+  cronSecret: env('CRON_SECRET'),
   dataDir: env('DATA_DIR', path.join(ROOT, 'data')),
   sessionSecret: env('SESSION_SECRET') || null,
   adminEmail: env('ADMIN_EMAIL'),
