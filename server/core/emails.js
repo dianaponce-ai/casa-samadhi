@@ -30,6 +30,8 @@ const rows = (list) => `<table role="presentation" width="100%" cellspacing="0" 
 const rest = (b) => Math.max(0, b.price - (b.deposit_paid || 0) - (b.gift_applied || 0));
 const PAY = { mp: 'Mercado Pago', transfer: 'Transferencia', local: 'En la casa', gift: 'Gift card' };
 const hhmm = (s) => String(s || '').slice(11);
+/** Agregar al calendario: Google y .ics (Apple, Outlook). */
+const calBox = (c) => (c?.google ? `<p style="font-size:13px;margin:16px 0 0">📅 Agregalo a tu calendario: <a href="${esc(c.google)}" style="color:#4c5a3d">Google Calendar</a> · <a href="${esc(c.ics)}" style="color:#4c5a3d">Apple / Outlook (.ics)</a></p>` : '');
 function bookingRows(b, { contact = false } = {}) {
   const many = b.items?.length > 1;
   return rows([
@@ -86,7 +88,7 @@ const fill = (text, v) => String(text || '').replace(/\{[a-z]+\}/g, (k) => (k in
 export const TEMPLATES = {
   booking_confirmed: { group: 'turnos', label: 'Turno confirmado', to: 'Clienta', when: 'Cuando se acredita la seña, o al reservar si no hay seña o la cubre una gift card.',
     render: (c) => ({ subject: `Tu turno está confirmado · ${c.booking.service_name}`, title: 'Te esperamos', intro: `Hola ${esc(first(c.booking.name))}, tu turno en Casa Samadhi está confirmado.`,
-      body: bookingRows(c.booking), cta: 'Ver o cancelar mi turno', ctaUrl: c.link, foot: `Te pedimos llegar 10 minutos antes. Podés cancelar o reprogramar hasta ${c.cancelHours} horas antes desde el botón de arriba o por WhatsApp.` }) },
+      body: bookingRows(c.booking) + calBox(c.cal), cta: 'Ver, cambiar o cancelar mi turno', ctaUrl: c.link, foot: `Te pedimos llegar 10 minutos antes. Podés cambiar el día u horario, o cancelar, hasta ${c.cancelHours} horas antes desde el botón de arriba o por WhatsApp.` }) },
   booking_pending: { group: 'turnos', label: 'Falta pagar la seña', to: 'Clienta', when: 'Si reservó y no pagó la seña, unos minutos después (se configura abajo), mientras el horario sigue guardado.',
     render: (c) => ({ subject: `Te guardamos el horario · ${c.booking.service_name}`, title: 'Te falta un paso', intro: `Hola ${esc(first(c.booking.name))}, reservaste ${esc(c.booking.service_name)} para el ${esc(longDate(c.booking.start))}. Para confirmarlo falta pagar la seña de ${money(c.booking.deposit_due)}.`,
       body: bookingRows(c.booking), cta: 'Pagar la seña', ctaUrl: c.link, foot: `Guardamos el horario hasta las ${esc(c.holdUntil || '')}. Después se libera para otra persona.` }) },
@@ -96,12 +98,12 @@ export const TEMPLATES = {
   booking_transfer: { group: 'turnos', label: 'Datos para transferir', to: 'Clienta', when: 'Cuando reserva y elige pagar la seña por transferencia. El turno queda guardado hasta que llega.',
     render: (c) => ({ subject: `Te guardamos el turno · transferí la seña · ${c.booking.code}`, title: 'Falta la transferencia', intro: `Hola ${esc(first(c.booking.name))}, te guardamos el turno. Para confirmarlo transferí la seña de <b>${money(c.booking.deposit_due)}</b> y mandanos el comprobante por WhatsApp. Apenas la veamos te llega la confirmación.`,
       body: transferBox(c.booking, c.pay) + bookingRows(c.booking), cta: 'Ya transferí / ver mi turno', ctaUrl: c.link, foot: `Guardamos el turno hasta el ${esc(c.holdUntil || '')}. Si la transferencia no llega para entonces, el horario se libera.` }) },
-  booking_rescheduled: { group: 'turnos', label: 'Turno reprogramado', to: 'Clienta', when: 'Cuando el equipo cambia el día u horario desde el panel (si se marca "Avisarle por email").',
+  booking_rescheduled: { group: 'turnos', label: 'Turno reprogramado', to: 'Clienta', when: 'Cuando la clienta cambia su turno desde el link del correo, o cuando el equipo lo cambia desde el panel (si se marca "Avisarle por email").',
     render: (c) => ({ subject: `Cambiamos tu turno · ${longDate(c.booking.start)}`, title: 'Tu turno tiene nuevo horario', intro: `Hola ${esc(first(c.booking.name))}, tu turno quedó para el <b>${esc(longDate(c.booking.start))}</b>.`,
-      body: bookingRows(c.booking), cta: 'Ver mi turno', ctaUrl: c.link }) },
+      body: bookingRows(c.booking) + calBox(c.cal), cta: 'Ver mi turno', ctaUrl: c.link }) },
   booking_reminder: { group: 'turnos', label: 'Recordatorio', to: 'Clienta', when: 'Antes del turno (24 horas por defecto, se cambia en Configuración).',
     render: (c) => ({ subject: `Te esperamos · ${c.booking.service_name}`, title: 'Recordatorio de tu turno', intro: `Hola ${esc(first(c.booking.name))}, te recordamos tu turno en Casa Samadhi.`,
-      body: bookingRows(c.booking), cta: 'Ver mi turno', ctaUrl: c.link, foot: 'Si no podés venir, avisanos así le damos el horario a otra persona.' }) },
+      body: bookingRows(c.booking) + calBox(c.cal), cta: 'Ver mi turno', ctaUrl: c.link, foot: 'Si no podés venir, avisanos así le damos el horario a otra persona.' }) },
   booking_cancelled: { group: 'turnos', label: 'Turno cancelado', to: 'Clienta', when: 'Cuando la clienta cancela desde su link o el equipo lo cancela en el panel.',
     render: (c) => ({ subject: `Tu turno fue cancelado · ${c.booking.service_name}`, title: 'Turno cancelado', intro: `Hola ${esc(first(c.booking.name))}, cancelamos tu turno del ${esc(longDate(c.booking.start))}.${c.booking.deposit_paid ? ' Te escribimos para devolverte la seña o pasarla a otra fecha.' : ''}`,
       body: '', cta: 'Reservar otro turno', ctaUrl: c.home + '#reservar' }) },
@@ -137,6 +139,9 @@ export const TEMPLATES = {
   pro_cancelled: { group: 'casa', label: 'Turno cancelado para la profesional', to: 'Profesional', when: 'Cuando se cancela un turno que tenía asignado.',
     render: (c) => ({ subject: `Se canceló: ${c.booking.service_name} · ${longDate(c.booking.start)}`, title: 'Se canceló un turno tuyo', intro: `Hola ${esc(first(c.pro?.name))}, se canceló el turno de ${esc(c.booking.name)}. Ese horario quedó libre.`,
       body: rows([['Servicio', esc(c.booking.service_name)], ['Día y hora', esc(longDate(c.booking.start))]]), cta: 'Ver mis turnos', ctaUrl: c.home + 'admin/' }) },
+  staff_rescheduled: { group: 'casa', label: 'Turno cambiado por la clienta', to: 'Equipo', when: 'Cuando una clienta cambia el día u horario de su turno desde el link del correo.',
+    render: (c) => ({ subject: `Cambio de turno: ${c.booking.name} · ${longDate(c.booking.start)}`, title: 'Una clienta cambió su turno', intro: `${esc(c.booking.name)} pasó su turno de <b>${esc(longDate(c.prev || ''))}</b> a <b>${esc(longDate(c.booking.start))}</b>.`,
+      body: bookingRows(c.booking, { contact: true }) }) },
   staff_cancelled: { group: 'casa', label: 'Cancelación', to: 'Equipo', when: 'Cuando una clienta cancela su turno desde el link del email o una profesional lo cancela desde su usuario.',
     render: (c) => ({ subject: `Canceló: ${c.booking.name} · ${longDate(c.booking.start)}`, title: c.by ? `${c.by} canceló un turno` : 'Una clienta canceló', intro: (c.reason ? `Motivo: <i>${esc(c.reason)}</i><br>` : '') + (c.booking.deposit_paid ? `Tenía una seña paga de <b>${money(c.booking.deposit_paid)}</b>: hay que devolverla o pasarla a otra fecha.` : 'El horario quedó libre.'),
       body: bookingRows(c.booking, { contact: true }), cta: 'Abrir el panel', ctaUrl: c.home + 'admin/' }) },
@@ -174,5 +179,5 @@ export function sampleContext(template, site, now = Date.now()) {
   const gift = { code: 'CS-K7QM-2XPA', token: 'ejemplo', amount: 60000, balance: template === 'giftcard_expiring' ? 25000 : 60000, service_name: 'Ritual esencial', buyer_name: 'Martina Herrera', buyer_email: 'martina@ejemplo.com', to_name: 'Sofía', to_email: 'sofia@ejemplo.com', message: '¡Feliz cumple! Regalate un momento para vos.', send_to_recipient: true, expires_at: new Date(now + (template === 'giftcard_expiring' ? 25 : 180) * 864e5).toISOString() };
   const w = { code: 'ARR-7KQ2MX', name: 'Lucía Fernández', email: 'lucia@ejemplo.com', ref: 'T-1042', reason: 'No voy a poder ir.' };
   const list = [{ ...booking }, { ...booking, code: 'T-1043', start: `${day} 15:30`, service_name: 'Esmaltado semipermanente', duration: 60, price: 16000, deposit_paid: 4800, name: 'Carolina Gómez', phone: '221 555-9876' }];
-  return { site, booking, gift, w, list, day, person: { name: 'Lucía Fernández' }, pro: { name: 'Trinidad' }, commission: 22000, pay: { alias: 'casa.samadhi.spa', cbu: '', holder: 'Casa Samadhi', bank: 'Banco de ejemplo', cuit: '' }, notified: template === 'staff_transfer', resetLink: (site.publicUrl || '') + '/#clave/ejemplo', link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
+  return { site, booking, gift, w, list, day, prev: `${day} 10:00`, person: { name: 'Lucía Fernández' }, pro: { name: 'Trinidad' }, commission: 22000, pay: { alias: 'casa.samadhi.spa', cbu: '', holder: 'Casa Samadhi', bank: 'Banco de ejemplo', cuit: '' }, notified: template === 'staff_transfer', resetLink: (site.publicUrl || '') + '/#clave/ejemplo', link: '#', home: (site.publicUrl || '') + '/', cancelHours: 24, holdUntil: '11:30', reviewUrl: site.reviewUrl || '' };
 }

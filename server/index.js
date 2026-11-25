@@ -9,7 +9,7 @@ import { config, ROOT } from './lib/config.js';
 import { state, withState } from './lib/store.js';
 import { sendEmail } from './lib/mail.js';
 import { createPayment, readPayment } from './integrations/mercadopago.js';
-import { handle, applyPayment, tick, addStaff, ApiError } from './core/spa-core.js';
+import { handle, applyPayment, tick, addStaff, ApiError, bookingIcs } from './core/spa-core.js';
 
 // ── Contraseñas y sesiones ───────────────────────────────
 export function hashPassword(pw) {
@@ -92,6 +92,12 @@ app.post('/api/pay/confirm', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Agregar al calendario (Apple, Outlook…): el turno como archivo .ics.
+app.get('/api/bookings/:token/calendar.ics', (req, res) => {
+  const b = state.bookings.find((x) => x.token === req.params.token);
+  if (!b) return res.status(404).send('No encontramos ese turno.');
+  res.type('text/calendar; charset=utf-8').set('Content-Disposition', `attachment; filename="turno-${b.code}.ics"`).send(bookingIcs(state, env, b));
+});
 app.use('/api', async (req, res, next) => {
   try {
     const p = verify(readCookie(req));

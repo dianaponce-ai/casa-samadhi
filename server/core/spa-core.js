@@ -276,14 +276,15 @@ export function slotsFor(st, env, service, date, { ignoreId = null, staff = fals
   return out;
 }
 
-export function availability(st, env, serviceId, from, days = 14, pro = null) {
+export function availability(st, env, serviceId, from, days = 14, pro = null, ignoreToken = '') {
+  const own = ignoreToken ? st.bookings.find((b) => b.token === String(ignoreToken)) : null;
   const s = st.services.find((x) => x.id === Number(serviceId) && x.visible && x.mode === 'online');
   if (!s) fail(404, 'Ese servicio no se reserva online. Escribinos por WhatsApp.');
   const today = dayKey(localNow(env));
   const start = isDate(from) && from > today ? from : today;
   const n = Math.min(62, Math.max(1, Number(days) || 14));
   const out = [];
-  for (let i = 0; i < n; i++) { const d = addDays(start, i); out.push({ date: d, slots: slotsFor(st, env, s, d, { pro: Number(pro) || null }) }); }
+  for (let i = 0; i < n; i++) { const d = addDays(start, i); out.push({ date: d, slots: slotsFor(st, env, s, d, { pro: Number(pro) || own?.pro_id || null, ignoreId: own?.id || null }) }); }
   return { service_id: s.id, days: out, maxDate: addDays(today, st.settings.booking.maxDaysAhead) };
 }
 
@@ -342,6 +343,10 @@ function publicBooking(st, env, b) {
     transfer: g.status === 'pending_transfer' ? { ...payInfo(st), amount: g.deposit_due, notified: !!g.transfer_notified, can_mp: mpOn(st.settings.pay) } : null,
     hold_until: g.hold_until, pay_url: g.status === 'pending_payment' ? g.pay_url : null,
     can_cancel: ACTIVE.includes(g.status) && g.status !== 'attention' && localToMs(g.start) - env.now() > st.settings.booking.cancelHours * 3600e3,
+    // Cambiar de día u horario: un solo servicio, confirmado y con la anticipación de la política de cancelación.
+    can_reschedule: g.status === 'confirmed' && g.items.length === 1 && localToMs(g.start) - env.now() > st.settings.booking.cancelHours * 3600e3,
+    service_id: g.service_id,
+    calendar: ['confirmed', 'pending_transfer', 'attention'].includes(g.status) ? calendarLinks(st, env, b) : null,
   };
 }
 function publicGift(g) {
@@ -357,6 +362,7 @@ async function sendEmail(st, env, template, to, ctx, ref = {}) {
   if (E.enabled[template] === false && !ref.test) return;
   const svc = ctx.booking && st.services.find((s) => s.id === ctx.booking.service_id);
   const site = svc ? { ...st.settings.site, whatsapp: serviceWhatsapp(st, svc) } : st.settings.site;
+  if (ctx.booking?.token && !ctx.cal) ctx = { ...ctx, cal: calendarLinks(st, env, ctx.booking) };
   let { subject, html } = renderEmail(template, { site, cancelHours: st.settings.booking.cancelHours, home: env.publicUrl + '/', reviewUrl: E.reviewUrl, pay: payInfo(st), ...ctx }, E.custom[template] || {});
   if (ref.test) subject = '[Prueba] ' + subject;
   const id = ++st.ids.email;
@@ -366,7 +372,31 @@ async function sendEmail(st, env, template, to, ctx, ref = {}) {
   try { const r = await env.sendEmail({ template, to, subject, html }); row.status = r === 'sin-smtp' ? 'sin configurar' : 'enviado'; } catch (e) { row.status = 'error'; row.error = String(e.message || e).slice(0, 200); }
 }
 export const staffTo = (st) => st.settings.booking.staffEmails || st.settings.site.email || '';
-const bookingLink = (env, b) => `${env.publicUrl}/#turno/${b.token}`;
+const bookingLink = (env, b) => `${env.publicUrl}/turnos#turno/${b.token}`;
+// ── Agregar al calendario ────────────────────────────────
+const calStamp = (ms) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+/** Links para agendar el turno: Google Calendar y un archivo .ics (Apple, Outlook y el resto). */
+export function calendarLinks(st, env, b) {
+  const g = groupView(st, b), site = st.settings.site;
+  const from = localToMs(g.start), to = from + (Number(g.duration) || 60) * 60e3;
+  const title = `${g.service_name} · Casa Samadhi`;
+  const details = `Código ${g.code}${g.pro_name ? ` · Te atiende ${g.pro_name}` : ''}. Ver, cambiar o cancelar: ${bookingLink(env, b)}`;
+  const where = `Casa Samadhi, ${site.address}, ${site.city}`;
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${calStamp(from)}/${calStamp(to)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(where)}&ctz=America/Argentina/Buenos_Aires`;
+  return { google, ics: `${env.publicUrl}/api/bookings/${b.token}/calendar.ics` };
+}
+/** El turno como evento de calendario (.ics), con un aviso 2 horas antes. */
+export function bookingIcs(st, env, b) {
+  const g = groupView(st, b), site = st.settings.site;
+  const from = localToMs(g.start), to = from + (Number(g.duration) || 60) * 60e3;
+  const t = (s) => String(s || '').replace(/[\\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Casa Samadhi//Turnos//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    `UID:${g.code}-${b.token.slice(0, 8)}@casasamadhi`, `DTSTAMP:${calStamp(env.now())}`, `DTSTART:${calStamp(from)}`, `DTEND:${calStamp(to)}`,
+    `SUMMARY:${t(`${g.service_name} · Casa Samadhi`)}`, `LOCATION:${t(`Casa Samadhi, ${site.address}, ${site.city}`)}`,
+    `DESCRIPTION:${t(`Código ${g.code}${g.pro_name ? ` · Te atiende ${g.pro_name}` : ''}. Ver, cambiar o cancelar: ${bookingLink(env, b)}`)}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', `DESCRIPTION:${t(`Turno en Casa Samadhi: ${g.service_name}`)}`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n') + '\r\n';
+}
 const giftLink = (env, g) => `${env.publicUrl}/#gift/${g.token}`;
 /** Email a la clienta sobre la reserva completa (una sola vez aunque tenga varios servicios). */
 const mailClient = (st, env, template, b, extra = {}) => { const g = groupView(st, b); return sendEmail(st, env, template, g.email, { booking: g, link: bookingLink(env, g), ...extra }, { booking_id: g.id }); };
@@ -865,12 +895,26 @@ export async function handle(st, env, req) {
   // Públicas
   ensure(st);
   if (method === 'GET' && path === '/api/site') return ok(publicSite(st, env));
-  if (method === 'GET' && path === '/api/availability') return ok(availability(st, env, q.service, q.from, q.days, q.pro));
+  if (method === 'GET' && path === '/api/availability') return ok(availability(st, env, q.service, q.from, q.days, q.pro, q.ignore));
   if (method === 'POST' && path === '/api/bookings') return ok(await createBooking(st, env, body, req.customer));
   if (seg[0] === 'bookings' && seg[1]) {
     const b = st.bookings.find((x) => x.token === seg[1]);
     if (!b) fail(404, 'No encontramos ese turno.');
     if (method === 'GET' && !seg[2]) return ok({ booking: publicBooking(st, env, b) });
+    // La clienta cambia el día o el horario desde el link del correo (con la misma asesora).
+    if (method === 'POST' && seg[2] === 'reschedule') {
+      if (!publicBooking(st, env, b).can_reschedule) fail(409, `Este turno ya no se puede cambiar online (faltan menos de ${st.settings.booking.cancelHours} horas o tiene más de un servicio). Escribinos por WhatsApp.`);
+      const date = String(body.date || ''), time = String(body.time || '');
+      const s = st.services.find((x) => x.id === b.service_id);
+      if (!s || !isDate(date) || !/^\d{2}:\d{2}$/.test(time)) fail(422, 'Elegí el día y el horario.');
+      if (!slotsFor(st, env, { ...s, duration: b.duration, resource: b.resource }, date, { ignoreId: b.id, pro: b.pro_id }).includes(time)) fail(409, 'Ese horario ya no está libre. Elegí otro.', { taken: true });
+      const prev = b.start;
+      b.start = `${date} ${time}`; b.reminded = false;
+      b.history.push({ at: iso(env), text: `La clienta cambió el turno de ${prev} a ${b.start}` });
+      if (b.email) await sendEmail(st, env, 'booking_rescheduled', b.email, { booking: b, link: bookingLink(env, b) }, { booking_id: b.id });
+      await mailTeam(st, env, 'staff_rescheduled', b, { prev });
+      return ok({ booking: publicBooking(st, env, b) });
+    }
     if (method === 'POST' && seg[2] === 'cancel') {
       if (!publicBooking(st, env, b).can_cancel) fail(409, `Faltan menos de ${st.settings.booking.cancelHours} horas: para cancelar escribinos por WhatsApp.`);
       await cancelBooking(st, env, b, 'la clienta', { whole: true });
