@@ -116,6 +116,13 @@ const MIGRATIONS = {
   },
   'profesionales-2026-11': (st) => addDefaultPros(st, new Date().toISOString()),
   'webmaster-2026-11': (st) => addWebmaster(st, new Date().toISOString()),
+  'comision-asesoras-2026-11': (st) => {
+    // Trinidad y Belén cobran el 40% de comisión (si todavía no tenían una cargada).
+    for (const p of PROS) {
+      const u = st.staff.find((x) => x.role === 'pro' && x.name.trim().toLowerCase() === p.name.toLowerCase());
+      if (u && !(Number(u.pay?.percent) > 0)) u.pay = { type: 'comision', base: 0, ...(u.pay || {}), percent: p.percent };
+    }
+  },
   'trabajos-2026-11': (st) => {
     // Trabajos de ejemplo (antes y después) para los servicios de manicuría que todavía no tienen.
     if (!st.settings.site.worksBefore) st.settings.site.worksBefore = SITE.worksBefore;
@@ -163,7 +170,7 @@ function addDefaultPros(st, at) {
     const prev = st.staff.find((u) => u.role === 'pro' && u.name.trim().toLowerCase() === p.name.toLowerCase());
     if (prev) { prev.services = [...new Set([...(prev.services || []), ...ids])]; prev.specialty = prev.specialty || p.specialty; continue; }
     // Sin email ni contraseña: atiende turnos; el acceso al panel y la comisión se cargan en Panel → Asesoras.
-    st.staff.push({ id: ++st.ids.staff, email: '', name: p.name, role: 'pro', password_hash: null, created_at: at, active: true, specialty: p.specialty, services: ids, pay: { type: 'comision', percent: 0, base: 0 } });
+    st.staff.push({ id: ++st.ids.staff, email: '', name: p.name, role: 'pro', password_hash: null, created_at: at, active: true, specialty: p.specialty, services: ids, pay: { type: 'comision', percent: p.percent || 0, base: 0 } });
   }
 }
 function migrate(st) {

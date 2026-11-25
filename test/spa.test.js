@@ -505,3 +505,16 @@ test('caja: facturación del día, cobro del saldo, egresos y cierre de caja', a
   const g = await adm('GET', '/cash?date=2026-11-03');
   assert.ok(g.billing.length === 14 && g.billing[0].income === 60000);
 });
+
+test('Trinidad y Belén con 40% de comisión, también en estados guardados', async () => {
+  const pct = (st, n) => st.staff.find((u) => u.name === n).pay.percent;
+  const st = seedState();
+  assert.equal(pct(st, 'Trinidad'), 40);
+  assert.equal(pct(st, 'Belén'), 40);
+  const old = seedState(), env = makeEnv();
+  for (const u of old.staff.filter((x) => x.role === 'pro')) u.pay = { type: 'comision', percent: 0, base: 0 };
+  old.meta.migrations = old.meta.migrations.filter((k) => k !== 'comision-asesoras-2026-11');
+  await call(old, env, 'GET', '/api/site');
+  assert.equal(pct(old, 'Trinidad'), 40);
+  assert.equal(pct(old, 'Belén'), 40);
+});
