@@ -17,13 +17,28 @@ export const RESOURCES = [
 ];
 
 // mode: 'online' (turno con seña), 'whatsapp' (se coordina por WhatsApp), 'menu' (solo figura en la lista de precios).
+// includes: uno por línea; con "Título — explicación" el turnero muestra la explicación debajo (como en las placas).
 export const SERVICES = [
   { slug: 'ritual-esencial', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual esencial', tag: 'Head spa', duration: 60, price: 60000, image: 'media/headspa-ritual.webp', featured: true,
     short: 'Un tratamiento completo para renovar tu cuerpo y tu mente.',
-    includes: ['Relajación guiada', 'Aromaterapia', 'Masaje capilar cervical y craneal', 'Lavado profundo con productos naturales', 'Toques faciales y mascarilla', 'Secado suave', 'Infusión de cortesía'] },
+    includes: [
+      'Relajación guiada — Con técnicas de respiración y relajación profunda para liberar el estrés.',
+      'Aromaterapia — Aceites esenciales que equilibran cuerpo, mente y emociones.',
+      'Masaje capilar cervical y craneal — Alivia tensiones, mejora la circulación y aporta una sensación de ligereza.',
+      'Lavado profundo con productos naturales — Limpieza suave y consciente para revitalizar tu cabello.',
+      'Toques faciales y mascarilla — Hidratación y nutrición para una piel fresca y radiante.',
+      'Secado suave — Con cuidado y productos que protegen tu cabello.',
+      'Infusión de cortesía — Un momento de calma para completar tu experiencia.',
+    ] },
   { slug: 'ritual-profundo', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual profundo con pindas', tag: 'Head spa + masajes', duration: 90, price: 90000, image: 'media/headspa-agua.webp', featured: true,
     short: 'La experiencia más completa y sensorial para tu bienestar.',
-    includes: ['Todo el ritual esencial', 'Masajes relajantes', 'Pindas herbales calientes', 'Sonidos de cuenco', 'Aromaterapia'] },
+    includes: [
+      'Todo el ritual esencial — Relajación guiada, masaje capilar, lavado profundo, toques faciales, secado e infusión.',
+      'Masajes relajantes — Alivian tensiones y promueven una sensación profunda de bienestar.',
+      'Pindas herbales calientes — Liberan toxinas, relajan músculos y equilibran tu energía.',
+      'Sonidos de cuenco — Frecuencias que armonizan tu mente y te conectan con la calma.',
+      'Aromaterapia — Esencias naturales que relajan, revitalizan y renuevan.',
+    ] },
   { slug: 'masoterapia-relajante', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Masoterapia relajante', tag: 'Masaje corporal', duration: 60, price: 45000, image: 'media/camilla.webp', featured: true,
     short: 'Perfecto para liberar tensión física. No incluye head spa.',
     includes: ['Masaje relajante corporal', 'Aromaterapia', 'Pindas herbales calientes', 'Sonidos de cuencos'] },

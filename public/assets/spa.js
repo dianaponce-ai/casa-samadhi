@@ -5,6 +5,8 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Turnero solo: el link de Instagram (/turnos) abre directo la reserva, sin la web.
+const SOLO = /^\/turnos\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -151,7 +153,7 @@ function renderSections() {
     <div class="body"><h3>${esc(s.name)}</h3>
       <div class="meta"><span class="price">${s.price ? fmt(s.price) : 'Consultar'}</span><span class="dur">${s.duration ? durTxt(s.duration) : ''}</span></div>
       ${s.short ? `<p>${esc(s.short)}</p>` : ''}
-      ${s.includes?.length ? `<ul>${s.includes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${s.includes?.length ? `<ul>${s.includes.map((x) => `<li>${esc(splitInc(x)[0])}</li>`).join('')}</ul>` : ''}
       <div class="actions">${actionsFor(s)}</div></div></article>`).join('');
   const mani = SITE.services.filter((s) => s.category === 'manicuria');
   // Dos columnas cuando hay precio con transferencia: efectivo y transferencia.
@@ -171,7 +173,7 @@ function renderSections() {
     $('#spaceTag').textContent = sp.tag || sp.name;
     $('#spaceIntro').textContent = spCat.intro || '';
     $('#spaceShort').textContent = sp.short || '';
-    $('#spaceList').innerHTML = (sp.includes || []).map((x) => `<li>${esc(x)}</li>`).join('');
+    $('#spaceList').innerHTML = (sp.includes || []).map((x) => `<li>${esc(splitInc(x)[0])}</li>`).join('');
     // Sin foto cargada (la terraza todavía no tiene) la sección se muestra solo con el texto.
     $('#alquiler').classList.toggle('no-photo', !sp.image);
     if (sp.image) $('#spaceImg').src = MEDIA(sp.image);
@@ -213,6 +215,76 @@ function renderSections() {
   if (g?.price) $('#gcardAmount').textContent = `${g.name} · ${fmt(g.price)}`;
 }
 
+// ── Íconos de línea para el turnero (estilo de las placas) ──
+const IC = {
+  hand: '<path d="M7 11V5.8a1.4 1.4 0 0 1 2.8 0V10M9.8 9.5V4.4a1.4 1.4 0 0 1 2.8 0v5.1M12.6 9.6V5.2a1.4 1.4 0 0 1 2.8 0v5.6M15.4 10.6a1.4 1.4 0 0 1 2.8 0v2.9c0 4-2.8 7-6.6 7-2.6 0-4.1-1.3-5.4-3.4l-2.4-4a1.4 1.4 0 0 1 2.4-1.5L8.6 14"/>',
+  aroma: '<path d="M10 2.8h4v2.6h-4zM8.8 5.4h6.4l1 2.8v10.6a2 2 0 0 1-2 2H9.8a2 2 0 0 1-2-2V8.2zM8 12.5h8"/><path d="M17.5 16.5c2.2-.2 3.6-1.6 3.7-3.8-2.2.1-3.6 1.5-3.7 3.8zM17.5 16.5l2-2"/>',
+  head: '<path d="M12 4.5a5 5 0 0 1 5 5v1.8a5 5 0 0 1-10 0V9.5a5 5 0 0 1 5-5zM7.5 21c.9-2.2 2.6-3.5 4.5-3.5s3.6 1.3 4.5 3.5M10 11.5h.01M14 11.5h.01M10.6 14.2c.8.6 2 .6 2.8 0"/><path d="M5 9c-1.2-1.3-1.2-2.7 0-4M19 9c1.2-1.3 1.2-2.7 0-4M3 11.5c-.8-.9-.8-1.9 0-2.8M21 11.5c.8-.9.8-1.9 0-2.8"/>',
+  bowl: '<path d="M3.5 11.5h17a8.5 8.5 0 0 1-17 0zM9 20.5h6M13.5 11.5l5.5-7"/>',
+  face: '<path d="M12 3.5c3.6 0 6 3 6 7.2 0 4.6-2.7 9.3-6 9.3s-6-4.7-6-9.3c0-4.2 2.4-7.2 6-7.2zM6.3 9c2.6.2 5-1 6.7-3.3 1 1.7 2.7 3 5 3.3"/><path d="M9.8 12.5h.01M14.2 12.5h.01M10.6 15.8c.8.5 2 .5 2.8 0M20.5 3.5v3M19 5h3M3.5 16v2.4M2.3 17.2h2.4"/>',
+  dryer: '<path d="M3.5 8a4.5 4.5 0 0 1 4.5-4.5h6.5v9H8A4.5 4.5 0 0 1 3.5 8zM14.5 4.5l5-1.2v9.4l-5-1.2M8 8h.01M8.5 12.5l1 6h2.5l.8-6M10.8 18.5v2.5"/>',
+  cup: '<path d="M4.5 10.5h12v3.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM16.5 11.5h1.7a2.2 2.2 0 0 1 0 4.4h-2.3M3.5 21h14M8.5 3c-1 1.4 1 2.3 0 4.3M12.5 3c-1 1.4 1 2.3 0 4.3"/>',
+  pinda: '<path d="M8 10.5c-2.2 1.9-3.3 3.9-3.3 5.9a4 4 0 0 0 4 4h6.6a4 4 0 0 0 4-4c0-2-1.1-4-3.3-5.9zM8 10.5h8M10 10.5l-.8-2.6h5.6l-.8 2.6M12 2.8c-1 1 1 2 0 3.2M9 3.4c-.8.8.8 1.6 0 2.4M15 3.4c-.8.8.8 1.6 0 2.4"/>',
+  leaf: '<path d="M12 21V9.5M12 13.5c-3.2 0-5.2-2-5.2-5.2 3.2 0 5.2 2 5.2 5.2zM12 11.5c3.2 0 5.2-2 5.2-5.2-3.2 0-5.2 2-5.2 5.2zM12 17.5c-2.6 0-4.2-1.6-4.2-4.2 2.6 0 4.2 1.6 4.2 4.2zM12 17.5c2.6 0 4.2-1.6 4.2-4.2-2.6 0-4.2 1.6-4.2 4.2z"/>',
+  lotus: '<path d="M12 18.5c-1.8-1.8-2.6-3.8-2.6-6S10.2 8 12 6.2c1.8 1.8 2.6 4 2.6 6.3s-.8 4.2-2.6 6zM12 18.5c-2.6.2-5-.6-7-2.6 1.2-1.6 2.8-2.5 4.6-2.7M12 18.5c2.6.2 5-.6 7-2.6-1.2-1.6-2.8-2.5-4.6-2.7M4 20.5h16"/>',
+  polish: '<path d="M10.2 2.8h3.6v5.4h-3.6zM8.6 8.2h6.8l1.3 3v8a2 2 0 0 1-2 2H9.3a2 2 0 0 1-2-2v-8zM9.5 14.5h5"/>',
+  foot: '<path d="M10 9.2c-2.2.2-3.6 2.6-3.6 5.8 0 3.6 1.5 6 3.9 6s3.4-1.9 3-4.2c-.3-1.6-.9-2.4-.9-3.9 0-1.2.5-2-.1-2.9-.5-.7-1.3-.9-2.3-.8z"/><circle cx="9" cy="5.5" r="1.3"/><circle cx="12.2" cy="4.5" r="1.1"/><circle cx="14.8" cy="5.6" r="1"/><circle cx="16.5" cy="7.6" r=".9"/><circle cx="17.2" cy="10" r=".8"/>',
+  spark: '<path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7zM18.5 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+};
+const icon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k] || IC.leaf}</svg>`;
+/** Ícono para un paso de "Qué incluye", según de qué habla. */
+function incIcon(t) {
+  const x = t.toLowerCase();
+  if (x.includes('ritual esencial')) return 'lotus';
+  if (x.includes('capilar') || x.includes('cabez')) return 'head';
+  if (x.includes('relaj') || x.includes('masaje')) return 'hand';
+  if (x.includes('aroma') || x.includes('aceite')) return 'aroma';
+  if (x.includes('lavado') || x.includes('cuenco')) return 'bowl';
+  if (x.includes('facial') || x.includes('mascarilla')) return 'face';
+  if (x.includes('secado')) return 'dryer';
+  if (x.includes('infusi') || x.includes('café') || x.includes('cafe') || x.includes('merienda')) return 'cup';
+  if (x.includes('pinda')) return 'pinda';
+  if (x.includes('oráculo') || x.includes('tarot')) return 'spark';
+  if (x.includes('mano')) return 'hand';
+  return 'leaf';
+}
+/** Ícono del servicio en la lista del turnero. */
+function svcIcon(s) {
+  const n = s.name.toLowerCase();
+  if (n.includes('manos y pies')) return 'hand';
+  if (n.includes('pie') || n.includes('pedicur')) return 'foot';
+  if (n.includes('retirado')) return 'spark';
+  if (s.category === 'manicuria') return 'polish';
+  if (n.includes('profundo') || n.includes('pinda')) return 'pinda';
+  if (n.includes('masoterapia') || n.includes('masaje')) return 'hand';
+  if (s.category === 'rituales') return 'head';
+  if (s.category === 'terapias') return 'spark';
+  return 'leaf';
+}
+/** "Título — explicación" (como en las placas); sin explicación, solo el título. */
+const splitInc = (x) => { const m = String(x).split(/\s+[—–]\s+/); return [m[0], m.slice(1).join(' — ')]; };
+const SPRIG = '<svg class="orn" viewBox="0 0 120 16" aria-hidden="true"><path d="M2 8h44M74 8h44"/><path d="M60 13c-3-2.5-4.4-5-4.4-8 2.6.6 4.4 2.4 4.4 5.2 0-2.8 1.8-4.6 4.4-5.2 0 3-1.4 5.5-4.4 8zM53.5 9.5c1.8 0 3.6.9 5.2 3M66.5 9.5c-1.8 0-3.6.9-5.2 3"/></svg>';
+/** La "plaquita" del servicio: lo que incluye, el precio y la duración, como las piezas de Instagram. */
+function plaque(s) {
+  const c = cat(s.category), inc = (s.includes || []).filter(Boolean);
+  const lead = s.short || (!inc.length ? c.intro : '');
+  const price = s.price_transfer
+    ? `<span class="pps"><span class="pp"><small>Efectivo</small>${fmt(s.price)}</span><span class="pp"><small>Transferencia</small>${fmt(s.price_transfer)}</span></span>`
+    : `<span class="pp big">${s.price ? fmt(s.price) : 'Consultar'}</span>`;
+  return `<article class="plaque">
+    ${s.image ? `<div class="pl-ph"><img src="${MEDIA(s.image)}" alt="" loading="lazy"></div>` : ''}
+    <div class="pl-in">
+      <div class="pl-ic">${icon(svcIcon(s))}</div>
+      <h4 class="pl-t">${esc(s.name)}</h4>
+      ${s.tag ? `<div class="pl-tag"><span>${esc(s.tag)}</span></div>` : SPRIG}
+      ${lead ? `<p class="pl-lead">${esc(lead)}</p>` : ''}
+      ${inc.length ? `<div class="pl-inc-t">Incluye</div><ul class="pl-inc">${inc.map((x) => { const [t, d] = splitInc(x); return `<li><span class="ic">${icon(incIcon(t))}</span><span class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</span></li>`; }).join('')}</ul>` : ''}
+      <div class="pl-price${s.price_transfer ? ' two' : ''}">${price}<span class="sep" aria-hidden="true"></span><span class="pd">${icon('clock')}${durTxt(s.duration)}</span></div>
+    </div>
+  </article>`;
+}
+
 // ── Panel lateral ────────────────────────────────────────
 let lastFocus = null;
 function openDrawer(html, { doc = false, label = 'Reservar' } = {}) {
@@ -222,28 +294,30 @@ function openDrawer(html, { doc = false, label = 'Reservar' } = {}) {
   d.setAttribute('aria-label', label);
   d.innerHTML = html;
   d.classList.add('on'); $('#scrim').classList.add('on'); $('#mnav').classList.remove('on');
-  document.body.style.overflow = 'hidden';
+  if (!SOLO) document.body.style.overflow = 'hidden';
   setTimeout(() => (d.querySelector('[autofocus]') || d.querySelector('h3'))?.focus?.({ preventScroll: true }), 60);
 }
 function closeAll() {
+  // En el turnero solo no hay web detrás: cerrar vuelve a la reserva (sin perder lo elegido).
+  if (SOLO) { $('#mnav').classList.remove('on'); $('#scrim').classList.remove('on'); if (/^#(turno|pago)/.test(location.hash)) setHash(''); return renderBooking(true); }
   $('#drawer').classList.remove('on'); $('#mnav').classList.remove('on'); $('#scrim').classList.remove('on');
   document.body.style.overflow = '';
   if (/^#(turno|gift|pago|reservar|regalar|terminos|arrepentimiento|cuenta|clave|olvide)/.test(location.hash)) setHash('');
   lastFocus?.focus?.({ preventScroll: true });
 }
 function setHash(h) { try { history.replaceState(null, '', h || location.pathname + location.search); } catch {} }
-const head = (title, back) => `<div class="dhead">${back ? `<button class="back" data-back="${back}">← Volver</button>` : ''}<h3 tabindex="-1">${esc(title)}</h3><button class="close" data-close aria-label="Cerrar">${ICON_X}</button></div>`;
+const head = (title, back) => `<div class="dhead">${back ? `<button class="back" data-back="${back}">← Volver</button>` : ''}<h3 tabindex="-1">${esc(title)}</h3><button class="close" data-close aria-label="${SOLO ? 'Volver a la reserva' : 'Cerrar'}">${ICON_X}</button></div>`;
 
 // ── Reserva ──────────────────────────────────────────────
 // Se puede reservar más de un servicio: `bk.items` son los ya elegidos y bk.service/date/time/pro el que se está eligiendo.
-const bk = { step: 1, items: [], service: null, pro: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '', payMethod: 'mp' };
+const bk = { step: 1, info: null, items: [], service: null, pro: null, days: [], date: '', time: '', loading: false, form: {}, errors: {}, gift: null, giftErr: '', sending: false, error: '', payMethod: 'mp' };
 const MAX_ITEMS = 4;
 const svcName = (s) => `${s.name}${s.tag && s.category === 'manicuria' ? ` · ${s.tag}` : ''}`;
 const toMinC = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 const lockDate = () => bk.items[0]?.date || '';
 function openBooking({ serviceId = null, category = null } = {}) {
   if (ACC && !bk.form.email) bk.form = { ...bk.form, name: ACC.customer.name, email: ACC.customer.email, phone: ACC.customer.phone, notes: bk.form.notes || ACC.stats?.lastNotes || '' };
-  Object.assign(bk, { step: serviceId ? 2 : 1, items: [], service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, pro: null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
+  Object.assign(bk, { step: serviceId ? 2 : 1, info: null, items: [], service: serviceId ? SITE.services.find((s) => s.id === Number(serviceId)) : null, pro: null, days: [], date: '', time: '', errors: {}, error: '', sending: false, filter: category });
   setHash('#reservar');
   renderBooking(true);
   if (bk.service) loadDays();
@@ -288,9 +362,14 @@ function renderBooking(open = false) {
     const lv = ACC?.stats?.lastVisit;
     const again = !adding && lv && SITE.services.find((x) => lv.service_name.startsWith(x.name) && x.mode === 'online');
     if (adding) back = 'sum';
-    body = (adding ? `<div class="sel-sum"><span class="n">Sumá otro servicio</span><span class="w">Para el ${esc(dayLabel(lockDate()).long)}, antes o después de ${bk.items.map((it) => esc(it.service.name)).join(' y ')}. Pagás una sola seña por todo.</span></div>`
+    if (bk.info) {
+      // La plaquita del servicio tocado: lo que incluye antes de elegir el día.
+      back = 'info';
+      body = plaque(bk.info);
+      foot = `<button class="btn solid wide" data-choose="${bk.info.id}">Elegir día y horario</button>`;
+    } else body = (adding ? `<div class="sel-sum"><span class="n">Sumá otro servicio</span><span class="w">Para el ${esc(dayLabel(lockDate()).long)}, antes o después de ${bk.items.map((it) => esc(it.service.name)).join(' y ')}. Pagás una sola seña por todo.</span></div>`
       : ACC ? `<div class="sel-sum welcome"><span class="n">Hola de nuevo, ${esc(ACC.customer.name.split(' ')[0])}</span>${lv ? `<span class="w">Tu última visita fue ${esc(lv.when)}: ${esc(lv.service_name)}.</span>` : '<span class="w">Tus datos ya están cargados para reservar.</span>'}${again && !bk.filter ? `<button class="btn sm" data-pick="${again.id}" style="justify-self:start;margin-top:6px">Repetir ${esc(again.name)}</button>` : ''}</div>` : '')
-      + groups.map((g) => `<div class="svc-group"><div class="step-t">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="n">${esc(svcName(s))}</span><span class="p">${fmt(s.price)}</span><span class="m">${durTxt(s.duration)}</span></button>`).join('')}</div>`).join('')
+      + groups.map((g) => `<div class="svc-group"><div class="step-t grp">${esc(g.c.title || g.c.name)}</div>${g.list.map((s) => `<button class="svc" data-pick="${s.id}" aria-pressed="${bk.service?.id === s.id}"><span class="ic">${icon(svcIcon(s))}</span><span class="n">${esc(svcName(s))}</span><span class="p">${fmt(s.price)}${s.price_transfer ? `<small>Transf. ${fmt(s.price_transfer)}</small>` : ''}</span><span class="m">${durTxt(s.duration)} · Ver qué incluye</span></button>`).join('')}</div>`).join('')
       + (bk.filter ? `<p class="note" style="margin-top:16px"><button class="link-btn" data-allsvc>Ver todos los servicios</button></p>` : '')
       + (waOnly.length && !adding ? `<div class="step-t">Se coordinan por WhatsApp</div><p class="note">${waOnly.map((s) => esc(s.name)).join(' · ')}. <a href="${wa(SITE.site.whatsapp, 'Hola! Quiero consultar por una terapia.')}" target="_blank" rel="noopener">Escribinos</a>.</p>` : '');
   } else if (bk.step === 2) {
@@ -339,7 +418,7 @@ function renderBooking(open = false) {
       <p class="note">${t.due ? `El resto (${fmt(t.rest)}) lo pagás en la casa. ${tr ? `Te guardamos el turno ${P.transferHoldHours || 12} horas mientras llega la transferencia.` : `Guardamos el horario ${SITE.booking.holdMinutes} minutos mientras pagás.`}` : t.giftAmt >= t.price ? 'Tu gift card cubre todo.' : `El resto (${fmt(t.price - t.giftAmt)}) lo pagás en la casa.`}</p>
       <button class="btn solid wide" form="bkForm" type="submit" ${bk.sending ? 'disabled' : ''}>${bk.sending ? 'Un momento…' : !t.due ? 'Confirmar turno' : tr ? 'Reservar y ver datos para transferir' : 'Pagar seña con Mercado Pago'}</button>`;
   }
-  const title = bk.step === 1 ? (adding ? 'Agregar servicio' : 'Reservá tu turno') : bk.step === 2 ? 'Día y horario' : 'Confirmá tu reserva';
+  const title = bk.step === 1 ? (bk.info ? 'Conocé el servicio' : adding ? 'Agregar servicio' : 'Reservá tu turno') : bk.step === 2 ? 'Día y horario' : 'Confirmá tu reserva';
   const html = `${head(title, back)}${steps}<div class="dbody">${body}</div>${foot ? `<div class="dfoot">${foot}</div>` : ''}`;
   if (open || !$('#drawer').classList.contains('on')) openDrawer(html, { label: 'Reservar turno' });
   else { const sc = $('#drawer .dbody')?.scrollTop || 0, ds = $('#dayStrip')?.scrollLeft || 0; $('#drawer').innerHTML = html; if ($('#drawer .dbody')) $('#drawer .dbody').scrollTop = sc; if ($('#dayStrip')) $('#dayStrip').scrollLeft = ds; }
@@ -630,7 +709,7 @@ function route() {
   if (h.startsWith('turno/')) showBooking(h.slice(6));
   else if (h.startsWith('gift/')) showGift(h.slice(5));
   else if (h.startsWith('pago/')) { const [, kind, token] = h.split('/'); showSimPay(kind, token); }
-  else if (h === 'reservar') openBooking();
+  else if (h === 'reservar' || h === 'turnos') openBooking();
   else if (h === 'regalar') openGift();
   else if (h === 'terminos') openLegal();
   else if (h === 'arrepentimiento') openWithdraw();
@@ -674,13 +753,19 @@ function bind() {
     if (back) {
       readBkForm(); bk.error = '';
       if (back.dataset.back === 'sum') { bk.step = 3; bk.service = null; return renderBooking(); }
+      if (back.dataset.back === 'info') { bk.info = null; return renderBooking(); }
+      const from = bk.step;
       bk.step = Number(back.dataset.back);
+      // De "día y horario" se vuelve a la plaquita del servicio.
+      if (bk.step === 1 && from === 2 && bk.service) bk.info = bk.service;
       if (bk.step === 1 && bk.items.length) bk.service = null;
       return renderBooking();
     }
     // Pasos de la reserva
     const pick = t.closest('[data-pick]');
-    if (pick) { bk.service = SITE.services.find((s) => s.id === Number(pick.dataset.pick)); bk.pro = null; bk.step = 2; bk.days = []; bk.time = ''; bk.date = lockDate(); bk.error = ''; renderBooking(); loadDays(); return; }
+    if (pick) { bk.info = SITE.services.find((s) => s.id === Number(pick.dataset.pick)) || null; renderBooking(); $('#drawer .dbody')?.scrollTo(0, 0); if (SOLO) window.scrollTo(0, Math.min(window.scrollY, $('#drawer').offsetTop)); return; }
+    const choose = t.closest('[data-choose]');
+    if (choose) { bk.info = null; bk.service = SITE.services.find((s) => s.id === Number(choose.dataset.choose)); bk.pro = null; bk.step = 2; bk.days = []; bk.time = ''; bk.date = lockDate(); bk.error = ''; renderBooking(); loadDays(); return; }
     const proB = t.closest('[data-pro]'); if (proB) { bk.pro = Number(proB.dataset.pro) || null; bk.time = ''; bk.days = []; return loadDays(); }
     if (t.closest('[data-take]') && !t.closest('[data-take]').disabled) { readBkForm(); return takeItem(); }
     const ed = t.closest('[data-edit-item]'); if (ed) { readBkForm(); return editItem(Number(ed.dataset.editItem)); }
@@ -746,13 +831,25 @@ async function handleReturn() {
   return true;
 }
 
+function startSolo() {
+  document.body.classList.add('solo');
+  document.title = 'Reservá tu turno · Casa Samadhi';
+  $('#drawer').setAttribute('aria-modal', 'false');
+  const S = SITE.site;
+  $('#soloFoot').innerHTML = `<img src="${MEDIA('media/logo-casa.png')}" alt="Casa Samadhi" width="120" height="105">
+    <p>${esc(S.address)} · ${esc(S.city)}</p>
+    <p><a href="${wa(S.whatsapp, 'Hola! Tengo una consulta.')}" target="_blank" rel="noopener">WhatsApp ${esc(S.whatsapp)}</a> · <a href="https://instagram.com/${esc(S.instagram)}" target="_blank" rel="noopener">@${esc(S.instagram)}</a></p>
+    <p class="links"><button type="button" class="link-btn" data-account>Mi cuenta</button> · <button type="button" class="link-btn" data-gift>Gift cards</button> · <a href="/">Conocé Casa Samadhi</a></p>`;
+}
 async function start() {
   bind();
   try { SITE = await api('/api/site'); }
   catch { $('#ritualList').innerHTML = '<p class="it">No pudimos cargar los servicios. Recargá la página.</p>'; return; }
   renderHero(); bindHero(); renderSections(); onScroll();
   try { ACC = await api('/api/account/me'); } catch { ACC = null; }
+  if (SOLO) startSolo();
   if (!(await handleReturn())) route();
+  if (SOLO && !$('#drawer').classList.contains('on')) openBooking();
   window.addEventListener('casa-refresh', async () => { try { SITE = await api('/api/site'); renderSections(); } catch {} });
 }
 start();
