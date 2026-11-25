@@ -612,10 +612,10 @@ async function showThanks(kind) {
     else pxc('ComprobanteEnviado', { value: b?.transfer?.amount || b?.deposit_due || 0, currency: 'ARS' });
   }
 }
-/** Sube el comprobante (foto achicada en el navegador, o PDF de hasta 4 MB). */
+/** Sube el comprobante (foto achicada en el navegador, o PDF de hasta 3 MB). */
 async function readProof(file) {
   if (file.type === 'application/pdf') {
-    if (file.size > 4 * 1024 * 1024) throw new Error('El PDF es muy pesado (máximo 4 MB). Probá con una captura de pantalla.');
+    if (file.size > 3 * 1024 * 1024) throw new Error('El PDF es muy pesado (máximo 3 MB). Probá con una captura de pantalla.');
     return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('No pudimos leer el archivo.')); r.readAsDataURL(file); });
   }
   const bmp = await createImageBitmap(file); const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));

@@ -3,10 +3,11 @@ import express from 'express';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { turnosPage, thanksPage } from './lib/turnos-page.js';
-import { saveImage, deleteImage, UPLOADS } from './lib/images.js';
+import { saveImage, deleteImage, readImage } from './lib/images.js';
+import { waitUntil } from '@vercel/functions';
 import crypto from 'node:crypto';
 import { config, ROOT } from './lib/config.js';
-import { state, withState } from './lib/store.js';
+import { state, withState, kind, init } from './lib/store.js';
 import { sendEmail } from './lib/mail.js';
 import { createPayment, readPayment } from './integrations/mercadopago.js';
 import { handle, applyPayment, tick, addStaff, ApiError, bookingIcs, niftyBatch, niftyDone } from './core/spa-core.js';
@@ -79,6 +80,7 @@ function limit(max, minutes) {
     a.push(now); hits.set(k, a); next();
   };
 }
+app.use(['/api', '/uploads'], (req, res, next) => startup().then(() => next(), next));
 app.post(['/api/bookings', '/api/giftcards', '/api/withdrawals'], limit(20, 15));
 app.post('/api/bookings/:token/transfer-sent', limit(10, 15));
 app.post(['/api/admin/login', '/api/account/login'], limit(10, 15));
@@ -86,14 +88,16 @@ app.post('/api/account/register', limit(8, 60));
 app.post(['/api/account/forgot', '/api/account/reset'], limit(6, 30));
 
 // Webhook de Mercado Pago: se consulta el pago a Mercado Pago (no se confía en lo que llega).
+// Se responde al terminar: en Vercel la función se congela apenas responde.
 app.post('/api/webhooks/mp', async (req, res) => {
-  res.sendStatus(200);
   try {
     const id = req.body?.data?.id || req.query['data.id'] || req.query.id;
-    if (!id || (req.body?.type && req.body.type !== 'payment')) return;
-    const p = await readPayment(id);
-    if (p) await withState((st) => applyPayment(st, env, p));
+    if (id && !(req.body?.type && req.body.type !== 'payment')) {
+      const p = await readPayment(id);
+      if (p) await withState((st) => applyPayment(st, env, p));
+    }
   } catch (e) { console.error('Webhook MP:', e.message); }
+  res.sendStatus(200);
 });
 // Vuelta del checkout: confirma enseguida sin esperar al webhook.
 app.post('/api/pay/confirm', async (req, res, next) => {
@@ -105,28 +109,48 @@ app.post('/api/pay/confirm', async (req, res, next) => {
 });
 
 // Agregar al calendario (Apple, Outlook…): el turno como archivo .ics.
-app.get('/api/bookings/:token/calendar.ics', (req, res) => {
-  const b = state.bookings.find((x) => x.token === req.params.token);
-  if (!b) return res.status(404).send('No encontramos ese turno.');
-  res.type('text/calendar; charset=utf-8').set('Content-Disposition', `attachment; filename="turno-${b.code}.ics"`).send(bookingIcs(state, env, b));
+app.get('/api/bookings/:token/calendar.ics', async (req, res, next) => {
+  try {
+    const ics = await withState((st) => { const b = st.bookings.find((x) => x.token === req.params.token); return b && { code: b.code, text: bookingIcs(st, env, b) }; }, false);
+    if (!ics) return res.status(404).send('No encontramos ese turno.');
+    res.type('text/calendar; charset=utf-8').set('Content-Disposition', `attachment; filename="turno-${ics.code}.ics"`).send(ics.text);
+  } catch (e) { next(e); }
+});
+// Tareas programadas (Vercel Cron): libera reservas vencidas, manda recordatorios y los turnos a Nifty.
+app.get('/api/cron', async (req, res, next) => {
+  if (config.cronSecret && req.get('authorization') !== `Bearer ${config.cronSecret}`) return res.status(401).json({ error: 'No autorizado.' });
+  try { res.json({ ok: true, ...(await maintain(true)) }); } catch (e) { next(e); }
 });
 app.use('/api', async (req, res, next) => {
   try {
     const p = verify(readCookie(req));
-    const staff = p ? state.staff.find((u) => u.id === p.uid) : null;
     const pc = verify(readCookie(req, CCOOKIE));
-    const customer = pc ? (state.customers || []).find((c) => c.id === pc.cid) : null;
     // Las acciones de la cuenta solo aceptan JSON (protección contra envíos desde otros sitios).
     if (req.path.startsWith('/account') && req.method !== 'GET' && !String(req.get('content-type') || '').includes('application/json')) return res.status(403).json({ error: 'Pedido rechazado.' });
     if (req.path.startsWith('/admin') && !['GET', 'HEAD'].includes(req.method) && !['/admin/login'].includes(req.path) && req.get('x-casa-admin') !== '1') return res.status(403).json({ error: 'Pedido rechazado.' });
-    const out = await withState((st) => handle(st, env, { method: req.method, path: '/api' + req.path, query: req.query, body: req.body, staff, customer }), req.method !== 'GET');
+    const write = req.method !== 'GET';
+    const out = await withState((st) => {
+      // Quién está logueado se busca dentro del bloqueo, con los datos al día.
+      const staff = p ? st.staff.find((u) => u.id === p.uid) : null;
+      const customer = pc ? (st.customers || []).find((c) => c.id === pc.cid) : null;
+      return handle(st, env, { method: req.method, path: '/api' + req.path, query: req.query, body: req.body, staff, customer });
+    }, write);
+    // En Vercel: después de responder, manda a Nifty lo que cambió y corre las tareas pendientes.
+    if (config.serverless) waitUntil(maintain(write).catch((e) => console.error('Tareas:', e.message)));
     if (out.session !== undefined) setCookie(res, out.session ? sign({ uid: out.session.staff_id, exp: Math.floor(Date.now() / 1000) + AGE }) : '', out.session ? AGE : 0);
     if (out.customerSession !== undefined) setCookie(res, out.customerSession ? sign({ cid: out.customerSession.customer_id, exp: Math.floor(Date.now() / 1000) + CAGE }) : '', out.customerSession ? CAGE : 0, CCOOKIE);
     res.status(out.status).json(out.body);
   } catch (e) { next(e); }
 });
 
-app.use('/uploads', express.static(UPLOADS, { maxAge: '30d', fallthrough: false }));
+// Fotos subidas y comprobantes (en la base de datos o en DATA_DIR/uploads). Los nombres llevan una parte al azar.
+app.get('/uploads/:name', async (req, res, next) => {
+  try {
+    const f = await readImage(req.params.name);
+    if (!f) return res.status(404).send('No encontramos esa foto.');
+    res.type(f.type).set('Cache-Control', 'public, max-age=2592000, immutable').send(f.data);
+  } catch (e) { next(e); }
+});
 app.use('/admin', express.static(path.join(ROOT, 'admin'), { index: 'index.html' }));
 // Turnero en su propia dirección (/turnos, el link para Instagram): la misma página, a pantalla completa y directo en la reserva.
 // Páginas de gracias: al reservar y al enviar el comprobante de la transferencia.
@@ -146,26 +170,47 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message?.startsWith('Mercado Pago') ? err.message : 'Algo salió mal. Probá de nuevo en un momento.' });
 });
 
-// Primer usuario del panel desde .env
-if (!state.staff.some((u) => u.role === 'admin') && config.adminEmail && config.adminPassword) {
-  await withState((st) => addStaff(st, env, { email: config.adminEmail, password: config.adminPassword, name: 'Administración', role: 'admin' }));
-  console.log(`Usuario del panel creado: ${config.adminEmail}`);
+// Al arrancar: primer usuario del panel desde .env y contraseña inicial del web master (si todavía no tiene una).
+// Se hace una vez por copia del servidor, antes del primer pedido a la API (en Vercel, la base puede tardar en responder).
+let started = null;
+function startup() {
+  started ||= (async () => {
+    await init();
+    if (!state.staff.some((u) => u.role === 'admin') && config.adminEmail && config.adminPassword) {
+      const made = await withState(async (st) => { if (st.staff.some((u) => u.role === 'admin')) return false; await addStaff(st, env, { email: config.adminEmail, password: config.adminPassword, name: 'Administración', role: 'admin' }); return true; });
+      if (made) console.log(`Usuario del panel creado: ${config.adminEmail}`);
+    }
+    if (config.webmasterPassword && config.webmasterPassword.length >= 10 && state.staff.some((x) => x.role === 'webmaster' && !x.password_hash)) {
+      await withState(async (st) => { const u = st.staff.find((x) => x.role === 'webmaster' && !x.password_hash); if (u) { u.password_hash = hashPassword(config.webmasterPassword); console.log(`Contraseña del web master cargada: ${u.email}`); } });
+    }
+  })().catch((e) => { started = null; throw e; });
+  return started;
 }
-// Contraseña inicial del web master (si todavía no tiene una).
-if (config.webmasterPassword && config.webmasterPassword.length >= 10) {
-  await withState(async (st) => { const u = st.staff.find((x) => x.role === 'webmaster' && !x.password_hash); if (u) { u.password_hash = hashPassword(config.webmasterPassword); console.log(`Contraseña del web master cargada: ${u.email}`); } });
+if (!config.serverless) await startup();
+// Nifty: los turnos nuevos o que cambiaron (el envío va fuera del bloqueo, para no frenar las reservas).
+async function sendNifty() {
+  const job = await withState((st) => niftyBatch(st, env), false);
+  if (!job) return 0;
+  const res = await niftySend(job.url, job.secret, job.body);
+  await withState((st) => niftyDone(st, env, job, res));
+  return res.ok ? job.sent.length : 0;
 }
-// Nifty: cada minuto, los turnos nuevos o que cambiaron (el envío va fuera del bloqueo, para no frenar las reservas).
-setInterval(async () => {
-  try {
-    const job = await withState((st) => niftyBatch(st, env), false);
-    if (!job) return;
-    const res = await niftySend(job.url, job.secret, job.body);
-    await withState((st) => niftyDone(st, env, job, res));
-  } catch (e) { console.error('Nifty:', e.message); }
-}, 60e3).unref();
-// Tareas cada minuto: libera reservas sin seña, manda recordatorios, vence gift cards.
-setInterval(() => withState((st) => tick(st, env).then((changed) => ({ save: changed })), false).catch((e) => console.error('Tareas:', e.message)), 60e3).unref();
+// Tareas: libera reservas sin seña, manda recordatorios, vence gift cards.
+// Con Postgres se hace con el bloqueo de la base (otra copia del servidor puede estar haciendo lo mismo).
+const runTick = () => withState((st) => tick(st, env).then((changed) => ({ save: changed })), kind === 'pg');
+let lastTick = 0;
+/** Tareas pendientes. En Vercel corre después de cada pedido (las tareas, como mucho una vez por minuto) y con el cron. */
+export async function maintain(force = false) {
+  const out = {};
+  if (force || Date.now() - lastTick > 60e3) { lastTick = Date.now(); await runTick(); out.tareas = true; }
+  if (force) out.nifty = await sendNifty();
+  else await sendNifty();
+  return out;
+}
+if (!config.serverless) {
+  setInterval(() => sendNifty().catch((e) => console.error('Nifty:', e.message)), 60e3).unref();
+  setInterval(() => runTick().catch((e) => console.error('Tareas:', e.message)), 60e3).unref();
+}
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
   app.listen(config.port, () => {

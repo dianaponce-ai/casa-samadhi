@@ -13,10 +13,13 @@
     "create-admin": "node --disable-warning=ExperimentalWarning scripts/create-admin.js",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
     "build:demo": "node --disable-warning=ExperimentalWarning scripts/build-preview.js dist/demo/index.html --standalone",
+    "build:vercel": "node --disable-warning=ExperimentalWarning scripts/build-vercel.js",
     "demo-users": "node --disable-warning=ExperimentalWarning scripts/demo-users.js"
   },
   "dependencies": {
+    "@vercel/functions": "3.11.3",
     "express": "^5.1.0",
-    "nodemailer": "6.10.1"
+    "nodemailer": "6.10.1",
+    "pg": "8.23.1"
   }
 }
