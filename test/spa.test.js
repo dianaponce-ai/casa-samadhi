@@ -518,3 +518,29 @@ test('Trinidad y Belén con 40% de comisión, también en estados guardados', as
   assert.equal(pct(old, 'Trinidad'), 40);
   assert.equal(pct(old, 'Belén'), 40);
 });
+
+test('ganancias y pérdidas: mes a mes con turnos, clientas, ingresos, egresos y comisiones', async () => {
+  const st = bare(), env = makeEnv();
+  const admin = { id: 1, email: 'a@a.com', name: 'Admin', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin); st.ids.staff = 1;
+  const pro = { id: 2, name: 'Tri', role: 'pro', active: true, services: [], pay: { type: 'comision', percent: 40, base: 0 } }; st.staff.push(pro);
+  const adm = (m, p, b, who = admin) => call(st, env, m, '/api/admin' + p, b, who);
+  const svc = st.services.find((s) => s.slug === 'ritual-esencial');
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: svc.id, date: '2026-11-04', time: '10:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
+  Object.assign(st.bookings[0], { status: 'completed', pro_id: pro.id, pro_name: pro.name });
+  await adm('POST', '/cash/moves', { date: '2026-11-03', type: 'in', method: 'efectivo', amount: 42000, booking_id: st.bookings[0].id });
+  await adm('POST', '/cash/moves', { date: '2026-11-03', type: 'out', method: 'efectivo', amount: 5000, concept: 'Insumos' });
+  const p = await adm('GET', '/pnl?months=3');
+  const nov = p.months.find((m) => m.month === '2026-11');
+  assert.equal(p.months.length, 3);
+  assert.equal(nov.bookings, 1);
+  assert.equal(nov.clients, 1);
+  assert.equal(nov.turnover, 60000);
+  assert.equal(nov.income, 18000 + 42000);
+  assert.equal(nov.expenses, 5000);
+  assert.equal(nov.commissions, 24000);
+  assert.equal(nov.result, 60000 - 5000 - 24000);
+  assert.equal(p.total.result, nov.result);
+  // Recepción no lo ve.
+  await assert.rejects(adm('GET', '/pnl', undefined, { id: 3, role: 'staff', name: 'R', password_hash: 'x$x' }), (e) => e.status === 403 || e.status === 401);
+});

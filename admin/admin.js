@@ -58,13 +58,15 @@ ROOT.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#"]
 
 // ── Navegación ───────────────────────────────────────────
 // El menú de la izquierda, en tres secciones: Turnos, CRM y Administración.
+// El menú de la izquierda, en cuatro grupos.
 const NAV_GROUPS = [
-  ['Turnos', [['agenda', 'Agenda'], ['turnos', 'Turnos'], ['horarios', 'Horarios y bloqueos'], ['servicios', 'Servicios'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos']]],
+  ['Administración', [['resumen', 'Resumen'], ['caja', 'Caja y facturación'], ['ganancias', 'Ganancias y pérdidas'], ['asesoras', 'Asesoras de belleza'], ['historial', 'Historial de cambios']]],
+  ['Turnos y servicios', [['agenda', 'Agenda'], ['turnos', 'Turnos'], ['servicios', 'Servicios'], ['horarios', 'Horarios y bloqueos'], ['giftcards', 'Gift cards'], ['eventos', 'Eventos']]],
   ['CRM', [['clientas', 'Clientas'], ['emails', 'Emails'], ['arrepentimientos', 'Arrepentimientos']]],
-  ['Administración', [['resumen', 'Resumen'], ['caja', 'Caja y facturación'], ['asesoras', 'Asesoras de belleza'], ['usuarios', 'Usuarios'], ['contenido', 'Textos de la web'], ['configuracion', 'Configuración'], ['historial', 'Historial de cambios']]],
+  ['Configuración', [['configuracion', 'Configuración general'], ['usuarios', 'Usuarios'], ['contenido', 'Textos de la web']]],
 ];
 const SECTIONS = NAV_GROUPS.flatMap(([, l]) => l);
-const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'asesoras', 'asesora', 'historial']);
+const ADMIN_ONLY = new Set(['contenido', 'configuracion', 'usuarios', 'asesoras', 'asesora', 'historial', 'ganancias']);
 // Lo que ve una asesora: solo sus turnos, sus servicios, sus comisiones y lo que hizo.
 const PRO_SECTIONS = [['inicio', 'Inicio'], ['agenda', 'Mi agenda'], ['turnos', 'Mis turnos'], ['clientas', 'Mis clientas'], ['misservicios', 'Mis servicios'], ['comisiones', 'Mis comisiones'], ['actividad', 'Mi actividad']];
 const PRO_ALLOWED = new Set([...PRO_SECTIONS.map(([k]) => k), 'turno', 'clienta']);
@@ -84,7 +86,7 @@ function route() {
   const view = $('#view');
   view.innerHTML = '<p class="muted">Cargando…</p>';
   const fn = { agenda: () => viewAgenda(id), resumen: viewDashboard, turnos: viewBookings, turno: () => viewBooking(id), clientas: viewClients, clienta: () => viewClient(decodeURIComponent(id || '')), servicios: viewServices, horarios: viewHours, giftcards: viewGifts, giftcard: () => viewGift(id), eventos: viewEvents, contenido: viewContent, emails: viewEmails, arrepentimientos: viewWithdrawals, configuracion: viewSettings, usuarios: viewUsers,
-    asesoras: viewPros, asesora: () => viewPro(id), caja: () => viewCash(id), historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
+    asesoras: viewPros, asesora: () => viewPro(id), caja: () => viewCash(id), ganancias: viewPnl, historial: viewAudit, inicio: viewProHome, misservicios: viewProServices, comisiones: () => viewCommissions(id), actividad: viewProActivity }[sec] || viewAgenda;
   Promise.resolve(fn()).catch((err) => { view.innerHTML = `<div class="notice">${esc(err.message)}</div>`; });
   view.focus({ preventScroll: true });
   if (EMBED) EMBED.scrollTop?.(); else window.scrollTo(0, 0);
@@ -222,6 +224,27 @@ async function viewCash(date) {
     try { await api('/cash/close', { method: 'POST', body: { date: d, counted: $('#clCount').value, withdrawn: $('#clOut').value, notes: $('#clNotes').value } }); toast('Caja cerrada'); reload(); } catch (err) { $('#clErr').textContent = err.message; }
   }, 'Cerrar caja'));
   $('#cReopen')?.addEventListener('click', (e) => confirmInline(e.target, '¿Reabrir la caja de este día?', async () => { try { await api('/cash/reopen', { method: 'POST', body: { date: d } }); toast('Caja reabierta'); reload(); } catch (err) { toast(err.message, true); } }, 'Reabrir'));
+}
+
+// ── Ganancias y pérdidas ─────────────────────────────────
+const monthName = (k) => { const [y, m] = k.split('-').map(Number); return `${capF(MONTHS[m - 1])} ${y}`; };
+async function viewPnl() {
+  const r = await api('/pnl?months=12');
+  const cur = r.months[0], prev = r.months[1] || {};
+  const delta = (a, b) => (b ? `${a >= b ? '▲' : '▼'} ${Math.abs(Math.round(((a - b) / b) * 100))}% vs. mes anterior` : '');
+  const kpi = (l, v, sub = '', cls = '') => `<div class="card kpi ${cls}"><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="small muted">${sub}</div>` : ''}</div>`;
+  const money = (v) => (v ? fmt(v) : '—');
+  $('#view').innerHTML = `<div class="page-head"><div><h1>Ganancias y pérdidas</h1><div class="sub">Mes a mes, los últimos 12 meses. Ingresos: señas cobradas online, gift cards vendidas en la web y todo lo que entró por la caja. Egresos: lo que salió por la caja. El resultado también descuenta las comisiones de las asesoras.</div></div></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      ${kpi(`Resultado · ${monthName(cur.month)}`, fmt(cur.result), delta(cur.result, prev.result), 'accent')}
+      ${kpi('Ingresos del mes', fmt(cur.income), delta(cur.income, prev.income))}
+      ${kpi('Egresos del mes', fmt(cur.expenses), cur.commissions ? `+ ${fmt(cur.commissions)} de comisiones` : '')}
+      ${kpi('Turnos realizados', cur.bookings, `${cur.clients} clientas · ${cur.booked} por venir`)}
+    </div>
+    <div class="card tablewrap"><table class="pnl"><tr><th>Mes</th><th class="r">Turnos</th><th class="r">Total en turnos</th><th class="r">Clientas</th><th class="r">Ingresos totales</th><th class="r">Egresos totales</th><th class="r">Comisiones</th><th class="r">Resultado</th></tr>
+      ${r.months.map((m) => `<tr class="${m.month === r.current ? 'cur' : ''}"><td><b>${monthName(m.month)}</b>${m.month === r.current ? ' <span class="pill s-confirmed">En curso</span>' : ''}</td><td class="r n">${m.bookings || '—'}</td><td class="r n">${money(m.turnover)}</td><td class="r n">${m.clients || '—'}</td><td class="r n">${money(m.income)}</td><td class="r n">${money(m.expenses)}</td><td class="r n">${money(m.commissions)}</td><td class="r n ${m.result < 0 ? 'warn' : ''}"><b>${m.result ? fmt(m.result) : '—'}</b></td></tr>`).join('')}
+      <tr class="tot"><td><b>Total 12 meses</b></td><td class="r n"><b>${r.total.bookings}</b></td><td class="r n"><b>${fmt(r.total.turnover)}</b></td><td class="r n"><b>${r.total.clients}</b></td><td class="r n"><b>${fmt(r.total.income)}</b></td><td class="r n"><b>${fmt(r.total.expenses)}</b></td><td class="r n"><b>${fmt(r.total.commissions)}</b></td><td class="r n ${r.total.result < 0 ? 'warn' : ''}"><b>${fmt(r.total.result)}</b></td></tr></table></div>
+    <p class="small muted" style="margin-top:10px">Turnos y total en turnos: los realizados en el mes (precio de lista). Clientas: distintas que vinieron ese mes; en el total, distintas en los 12 meses. Para que los egresos estén completos, cargá los gastos en Caja y facturación.</p>`;
 }
 
 // ── Resumen ──────────────────────────────────────────────
