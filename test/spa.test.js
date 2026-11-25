@@ -25,11 +25,11 @@ test('reserva con seña: queda guardada, se confirma al pagar y el horario se oc
   const st = seedState(), env = makeEnv();
   const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who });
   assert.equal(r.booking.status, 'pending_payment');
-  assert.equal(r.booking.deposit_due, 16500);
+  assert.equal(r.booking.deposit_due, 18000);
   await assert.rejects(call(st, env, 'POST', '/api/bookings', { service_id: 2, date: '2026-11-04', time: '10:30', ...who }), (e) => e instanceof ApiError && e.status === 409);
   const p = await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
   assert.equal(p.booking.status, 'confirmed');
-  assert.equal(p.booking.deposit_paid, 16500);
+  assert.equal(p.booking.deposit_paid, 18000);
   assert.ok(env.sent.some((m) => m.template === 'booking_confirmed' && m.to === 'ana@ejemplo.com'));
   // La manicuría usa otro espacio: ese horario sigue libre para ella.
   assert.ok(slotsFor(st, env, st.services.find((s) => s.slug === 'dipping'), '2026-11-04').includes('10:00'));
@@ -56,7 +56,7 @@ test('gift card: se compra, se activa con el pago y paga un turno completo', asy
   assert.equal(st.giftcards[0].balance, 0);
   // Cancelar devuelve el saldo a la gift card.
   await call(st, env, 'POST', `/api/bookings/${r.booking.token}/cancel`, {});
-  assert.equal(st.giftcards[0].balance, 55000);
+  assert.equal(st.giftcards[0].balance, 60000);
 });
 
 test('bloqueos y panel', async () => {
@@ -141,7 +141,7 @@ test('CRM: ficha de clienta, notas y la cuenta recuerda la última visita', asyn
   const c = list.clients[0];
   assert.equal(c.key, 'ana@ejemplo.com');
   assert.equal(c.visits, 1);
-  assert.equal(c.spent, 55000);
+  assert.equal(c.spent, 60000);
   assert.equal(c.lastService, st.bookings[0].service_name);
   const saved = await call(st, env, 'PATCH', '/api/admin/clients/ficha', { key: c.key, notes: 'Le gusta la lavanda', tags: ['VIP'], birthday: '1990-11-20' }, staff);
   assert.equal(saved.crm.notes, 'Le gusta la lavanda');
@@ -162,12 +162,12 @@ test('reserva con varios servicios: una sola seña, no se superponen y se cancel
   await assert.rejects(call(st, env, 'POST', '/api/bookings', { items: [{ service_id: 1, date: '2026-11-04', time: '10:00' }, { service_id: mani.id, date: '2026-11-04', time: '10:30' }], ...who }), (e) => e.status === 409);
   const r = await call(st, env, 'POST', '/api/bookings', { items: [{ service_id: 1, date: '2026-11-04', time: '10:00' }, { service_id: mani.id, date: '2026-11-04', time: '11:00' }], ...who });
   assert.equal(r.booking.items.length, 2);
-  assert.equal(r.booking.price, 55000 + 20000);
-  assert.equal(r.booking.deposit_due, 16500 + 6000);
+  assert.equal(r.booking.price, 60000 + 20000);
+  assert.equal(r.booking.deposit_due, 18000 + 6000);
   assert.equal(st.bookings[0].group, st.bookings[1].group);
   const p = await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token });
   assert.equal(p.booking.status, 'confirmed');
-  assert.deepEqual(st.bookings.map((b) => b.deposit_paid), [16500, 6000]);
+  assert.deepEqual(st.bookings.map((b) => b.deposit_paid), [18000, 6000]);
   assert.equal(env.sent.filter((m) => m.template === 'booking_confirmed').length, 1); // un solo email para toda la reserva
   await call(st, env, 'POST', `/api/bookings/${r.booking.token}/cancel`, {});
   assert.deepEqual(st.bookings.map((b) => b.status), ['cancelled', 'cancelled']);
@@ -181,7 +181,7 @@ test('transferencia: queda guardado, la clienta avisa y la administración confi
   const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who, pay_method: 'transfer' });
   assert.equal(r.booking.status, 'pending_transfer');
   assert.equal(r.booking.transfer.alias, 'casa.samadhi.spa');
-  assert.equal(r.booking.transfer.amount, 16500);
+  assert.equal(r.booking.transfer.amount, 18000);
   assert.ok(env.sent.some((m) => m.template === 'booking_transfer' && m.to === 'ana@ejemplo.com' && m.html.includes('casa.samadhi.spa')));
   assert.ok(env.sent.some((m) => m.template === 'staff_transfer' && m.to === 'equipo@ejemplo.com'));
   env.advance(2 * 3600e3); await tick(st, env);
@@ -193,7 +193,7 @@ test('transferencia: queda guardado, la clienta avisa y la administración confi
   assert.equal(d.transfers.length, 1);
   await call(st, env, 'PATCH', '/api/admin/bookings/' + st.bookings[0].id, { transfer: 'confirm' }, admin);
   assert.equal(st.bookings[0].status, 'confirmed');
-  assert.equal(st.bookings[0].deposit_paid, 16500);
+  assert.equal(st.bookings[0].deposit_paid, 18000);
   assert.ok(env.sent.some((m) => m.template === 'booking_confirmed'));
   assert.ok(st.audit.some((a) => a.user === 'Admin' && a.action.includes('Confirmó la transferencia')));
 });
@@ -225,18 +225,18 @@ test('profesionales: se asignan solas, ven solo lo suyo, pueden cancelar y cobra
   const other = st.bookings.find((b) => b.pro_id !== ana.id);
   await assert.rejects(proCall('GET', '/bookings/' + other.id), (e) => e.status === 404);
   await assert.rejects(proCall('PATCH', '/bookings/' + mine.bookings[0].id, { status: 'completed' }), (e) => e.status === 403);
-  // Comisiones: 40% de 55.000 para Ana; básico + 20% para Sol.
+  // Comisiones: 40% de 60.000 para Ana; básico + 20% para Sol.
   const c = await proCall('GET', '/commissions?month=2026-11');
-  assert.equal(c.upcoming, 22000);
+  assert.equal(c.upcoming, 24000);
   env.advance(3 * 864e5); await tick(st, env);
   const c2 = await proCall('GET', '/commissions?month=2026-11');
-  assert.equal(c2.earned, 22000);
+  assert.equal(c2.earned, 24000);
   const list = await adm('GET', '/pros?month=2026-11');
   const solRow = list.pros.find((p) => p.id === sol.id);
-  assert.equal(solRow.month.total, 300000 + 11000);
+  assert.equal(solRow.month.total, 300000 + 12000);
   // Si cambia el porcentaje, lo ya realizado queda con el de ese momento.
   await adm('PATCH', '/pros/' + ana.id, { pay: { type: 'comision', percent: 50 } });
-  assert.equal((await proCall('GET', '/commissions?month=2026-11')).earned, 22000);
+  assert.equal((await proCall('GET', '/commissions?month=2026-11')).earned, 24000);
   // Cancelar un turno propio queda registrado con el motivo.
   const b4 = await call(st, env, 'POST', '/api/bookings', { service_id: 2, date: '2026-11-10', time: '15:00', ...who });
   await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: b4.booking.token });
@@ -277,4 +277,22 @@ test('migración de la carta de manicuría: actualiza, suma y saca servicios sin
   assert.ok(st.services.find((s) => s.id === trad.id && !s.visible), 'con turnos por delante se oculta');
   assert.ok(!st.services.some((s) => s.slug === 'soft-gel-complejo'));
   assert.ok(mani.every((s) => st.staff[0].services.includes(s.id)), 'la manicura queda asignada a la carta nueva');
+});
+
+test('migración de rituales y terraza: precios nuevos, sin coworking ni salón para alquilar', async () => {
+  const st = seedState(), env = makeEnv();
+  const esencial = st.services.find((s) => s.slug === 'ritual-esencial'), alq = st.services.find((s) => s.slug === 'alquiler-del-espacio');
+  Object.assign(esencial, { price: 55000 });
+  Object.assign(alq, { name: 'Alquiler del espacio', includes: ['Talleres, clases, meriendas, reuniones y coworking'], image: 'media/espacio-taller.webp' });
+  st.settings.giftcards.amounts = [45000, 55000, 80000, 100000];
+  st.settings.content.faq.find((f) => f.q === '¿Hacen eventos privados?').a = 'meriendas, reuniones, talleres y coworking';
+  st.meta.migrations = st.meta.migrations.filter((k) => k !== 'rituales-terraza-2026-11');
+  const site = await call(st, env, 'GET', '/api/site');
+  const svc = (slug) => site.services.find((s) => s.slug === slug);
+  assert.equal(svc('ritual-esencial').price, 60000);
+  assert.equal(svc('ritual-profundo').price, 90000);
+  assert.equal(svc('alquiler-del-espacio').name, 'Alquiler de la terraza');
+  assert.equal(svc('alquiler-del-espacio').image, '');
+  assert.deepEqual(st.settings.giftcards.amounts, [45000, 60000, 90000, 100000]);
+  assert.ok(!JSON.stringify(site).toLowerCase().includes('coworking'));
 });

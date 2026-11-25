@@ -695,7 +695,7 @@ async function viewPros(editId = null) {
 /** Formulario de alta o edición: datos personales, acceso al panel, servicios y forma de pago. */
 function proForm(box, p, meta) {
   const v = p || { name: '', email: '', phone: '', dni: '', cuit: '', birthday: '', address: '', alias: '', specialty: '', notes: '', services: [], pay: { type: 'comision', percent: 40, base: 0 }, active: true, has_access: false };
-  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias', espacio: 'Alquiler del espacio' };
+  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias', espacio: 'Alquiler de la terraza' };
   const byCat = {}; for (const s of meta.services) (byCat[s.category] = byCat[s.category] || []).push(s);
   const inp = (k, label, type = 'text', extra = '') => `<label class="fl"><span>${label}</span><input id="pf_${k}" type="${type}" value="${esc(v[k] || '')}" ${extra}></label>`;
   box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva profesional'}</h2>

@@ -1,12 +1,13 @@
 // Datos iniciales de Casa Samadhi: servicios, horarios y textos.
-// Precios y servicios tomados del Instagram @casasamadhistyle (octubre 2026; manicuría actualizada en noviembre 2026). Todo se puede cambiar desde el panel.
+// Precios y servicios tomados del Instagram @casasamadhistyle (octubre 2026; manicuría y rituales actualizados en noviembre 2026).
+// La casa: cafetería en planta baja y eventos en el patio; arriba, el salón de manicuría y pedicuría y la sala de head spa; la terraza se alquila para eventos. Todo se puede cambiar desde el panel.
 // Las duraciones que no figuraban en Instagram son estimadas y conviene revisarlas.
 
 export const CATEGORIES = [
   { key: 'rituales', name: 'Rituales', title: 'Head spa & masajes', intro: 'Un ritual para soltar el cuerpo, la cabeza y el día. Agua tibia, aromas, manos que saben y silencio.' },
-  { key: 'manicuria', name: 'Manicuría', title: 'Manicuría', intro: 'Todos nuestros servicios de manicuría incluyen café de cortesía, mensaje de oráculo y spa de manos.' },
+  { key: 'manicuria', name: 'Manicuría', title: 'Manicuría y pedicuría', intro: 'En el salón de arriba. Todos los servicios incluyen café de cortesía, mensaje de oráculo y spa de manos.' },
   { key: 'terapias', name: 'Terapias', title: 'Terapias holísticas', intro: 'Sesiones para armonizar cuerpo, mente y energía, con especialistas que se suman a la casa.' },
-  { key: 'espacio', name: 'Alquiler del espacio', title: 'Un espacio pensado para crear y compartir', intro: 'Casa Samadhi abre sus puertas a propuestas que inspiran, enseñan y conectan.' },
+  { key: 'espacio', name: 'Alquiler de la terraza', title: 'Una terraza para tus eventos', intro: 'Casa Samadhi abre su terraza para celebraciones y encuentros.' },
 ];
 
 export const RESOURCES = [
@@ -17,12 +18,12 @@ export const RESOURCES = [
 
 // mode: 'online' (turno con seña), 'whatsapp' (se coordina por WhatsApp), 'menu' (solo figura en la lista de precios).
 export const SERVICES = [
-  { slug: 'ritual-esencial', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual esencial', tag: 'Head spa', duration: 60, price: 55000, image: 'media/headspa-ritual.webp', featured: true,
-    short: 'El head spa completo: masaje capilar, lavado profundo y un rato para vos.',
+  { slug: 'ritual-esencial', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual esencial', tag: 'Head spa', duration: 60, price: 60000, image: 'media/headspa-ritual.webp', featured: true,
+    short: 'Un tratamiento completo para renovar tu cuerpo y tu mente.',
     includes: ['Relajación guiada', 'Aromaterapia', 'Masaje capilar cervical y craneal', 'Lavado profundo con productos naturales', 'Toques faciales y mascarilla', 'Secado suave', 'Infusión de cortesía'] },
-  { slug: 'ritual-profundo', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual profundo con pindas', tag: 'Head spa + masajes', duration: 90, price: 80000, image: 'media/headspa-agua.webp', featured: true,
-    short: 'La experiencia más completa y sensorial de la casa.',
-    includes: ['Todo el ritual esencial', 'Masajes relajantes', 'Pindas herbales calientes', 'Sonidos de cuencos'] },
+  { slug: 'ritual-profundo', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Ritual profundo con pindas', tag: 'Head spa + masajes', duration: 90, price: 90000, image: 'media/headspa-agua.webp', featured: true,
+    short: 'La experiencia más completa y sensorial para tu bienestar.',
+    includes: ['Todo el ritual esencial', 'Masajes relajantes', 'Pindas herbales calientes', 'Sonidos de cuenco', 'Aromaterapia'] },
   { slug: 'masoterapia-relajante', category: 'rituales', resource: 'headspa', mode: 'online', name: 'Masoterapia relajante', tag: 'Masaje corporal', duration: 60, price: 45000, image: 'media/camilla.webp', featured: true,
     short: 'Perfecto para liberar tensión física. No incluye head spa.',
     includes: ['Masaje relajante corporal', 'Aromaterapia', 'Pindas herbales calientes', 'Sonidos de cuencos'] },
@@ -39,9 +40,10 @@ export const SERVICES = [
   { slug: 'tarot-y-oraculo', category: 'terapias', resource: 'terapias', mode: 'whatsapp', name: 'Tarot y oráculo', tag: 'Lecturas personalizadas', duration: 45, price: null, image: 'media/deco-cristal.webp',
     short: 'Una lectura para hacerle una pregunta al tarot y recibir el mensaje del oráculo.' },
 
-  { slug: 'alquiler-del-espacio', category: 'espacio', resource: 'terapias', mode: 'whatsapp', name: 'Alquiler del espacio', tag: 'Para actividades especiales', duration: 0, price: null, image: 'media/espacio-taller.webp',
-    short: 'Un espacio cálido y acogedor para talleres, clases, encuentros y celebraciones de hasta 10 personas. Consultanos por fechas disponibles.',
-    includes: ['Hasta 10 personas', 'Talleres, clases, meriendas, reuniones y coworking', 'Mesa grande, luz natural y ambientación cálida', 'Calle 47 N° 679, La Plata'] },
+  // La terraza: todavía sin fotos (cuando estén, se eligen en Panel → Servicios).
+  { slug: 'alquiler-del-espacio', category: 'espacio', resource: 'terapias', mode: 'whatsapp', name: 'Alquiler de la terraza', tag: 'Para eventos', duration: 0, price: null, image: '',
+    short: 'La terraza de la casa se alquila para cumpleaños, celebraciones y encuentros. Consultanos por fechas disponibles y armamos la propuesta.',
+    includes: ['Terraza al aire libre', 'Cumpleaños, celebraciones y encuentros', 'Cafetería de la casa en planta baja', 'Calle 47 N° 679, La Plata'] },
 ];
 
 export const SITE = {
@@ -93,7 +95,7 @@ export const PAYMENTS = {
 
 export const GIFTCARDS = {
   enabled: true,
-  amounts: [45000, 55000, 80000, 100000],
+  amounts: [45000, 60000, 90000, 100000],
   min: 20000,
   validityDays: 180,
 };
@@ -106,7 +108,7 @@ export const FAQ = [
   { q: '¿Puedo cambiar o cancelar mi turno?', a: 'Sí. Hasta 24 horas antes podés cancelarlo desde el link del email de confirmación o escribirnos para pasarlo a otro día; la seña queda a cuenta del nuevo turno o te la devolvemos. Con menos de 24 horas de aviso la seña no se devuelve.' },
   { q: '¿Cómo funcionan las gift cards?', a: 'Elegís un monto o un ritual, la pagás online y te llega una tarjeta con un código. Quien la recibe lo escribe al reservar y se descuenta del total. Vale por 6 meses.' },
   { q: '¿Qué incluye la manicuría?', a: 'Todos los servicios incluyen exfoliación e hidratación de manos, café de cortesía, mensaje de oráculo y spa de manos.' },
-  { q: '¿Hacen eventos privados?', a: 'Sí, el espacio está disponible para meriendas, reuniones, talleres y coworking. Escribinos por WhatsApp y armamos la propuesta.' },
+  { q: '¿Hacen eventos privados?', a: 'Sí, **la terraza** se alquila para cumpleaños, celebraciones y encuentros. En el **patio** hacemos los eventos y talleres de la casa. Escribinos por WhatsApp y armamos la propuesta.' },
 ];
 
 export const TERMS = `## Términos y condiciones

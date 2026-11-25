@@ -88,6 +88,23 @@ const MIGRATIONS = {
     const antesM = otros.filter((s) => s.position < base), despues = otros.filter((s) => s.position >= base);
     [...antesM, ...mani, ...hidden, ...despues].forEach((s, i) => (s.position = i));
   },
+  'rituales-terraza-2026-11': (st) => {
+    // Precios nuevos de los rituales, y la terraza como único espacio para alquilar (el salón de arriba es solo manicuría y pedicuría).
+    for (const slug of ['ritual-esencial', 'ritual-profundo', 'alquiler-del-espacio']) {
+      const s = st.services.find((x) => x.slug === slug), def = SERVICES.find((x) => x.slug === slug);
+      if (!s) continue;
+      for (const k of ['name', 'tag', 'price', 'duration', 'short', 'includes', 'image']) s[k] = structuredClone(def[k]);
+    }
+    for (const key of ['manicuria', 'espacio']) {
+      const c = st.settings.categories.find((x) => x.key === key), def = CATEGORIES.find((x) => x.key === key);
+      if (c) Object.assign(c, { name: def.name, title: def.title, intro: def.intro });
+    }
+    const G = st.settings.giftcards;
+    if (G?.amounts) G.amounts = G.amounts.map((a) => ({ 55000: 60000, 80000: 90000 })[a] || a);
+    const faq = st.settings.content?.faq, nueva = FAQ.find((f) => f.q === '¿Hacen eventos privados?');
+    const i = faq ? faq.findIndex((f) => f.q === nueva.q) : -1;
+    if (i >= 0) faq[i] = { ...nueva };
+  },
 };
 function migrate(st) {
   st.meta.migrations = st.meta.migrations || [];
