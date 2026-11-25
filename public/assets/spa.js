@@ -41,77 +41,23 @@ function md(text) {
 let tt;
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2600); }
 
-// ── Portada ──────────────────────────────────────────────
-const SLIDES = [
-  { img: 'media/headspa-ritual.webp', pos: 'center 62%', eyebrow: 'Head spa', title: 'Un ritual esencial', sub: 'Agua tibia, aromas y manos que saben. Una hora solo para vos.', cta: ['Reservar', 'book:ritual-esencial'], cta2: ['Ver rituales', '#rituales'] },
-  { img: 'media/headspa-agua.webp', pos: 'center 50%', eyebrow: 'Head spa + masajes', title: 'Ritual profundo', sub: 'Pindas herbales calientes, sonidos de cuenco y aromaterapia. La experiencia más completa.', cta: ['Reservar', 'book:ritual-profundo'] },
-  { img: 'media/manicuria-lampara.webp', pos: '84% 60%', eyebrow: 'Manicuría & pedicuría', title: 'Tu momento, tu lugar', sub: 'En el salón de arriba, con café de cortesía, mensaje de oráculo y spa de manos.', cta: ['Reservar manicuría', 'cat:manicuria'] },
-  { img: 'media/cafeteria.webp', eyebrow: 'Cafetería & eventos', title: 'Café, spa & momentos', sub: 'Cafetería en planta baja, eventos en el patio y la terraza para tus festejos.', cta: ['Conocé la casa', '#cafe'] },
+// ── Portada: banner bajo con un collage de fotitos de los servicios ──
+// Cada foto se muestra chica (más chica que su tamaño real), así se ve nítida.
+const COLLAGE = [
+  { img: 'media/headspa-ritual.webp', pos: 'center 62%', label: 'Ritual esencial', act: 'book:ritual-esencial' },
+  { img: 'media/trabajos/softgel-rosa-glitter.webp', label: 'Soft gel', act: 'book:soft-gel' },
+  { img: 'media/manicuria-cafe.webp', label: 'Manicuría', act: 'cat:manicuria' },
+  { img: 'media/headspa-agua.webp', pos: 'center 45%', label: 'Ritual profundo', act: 'book:ritual-profundo' },
+  { img: 'media/unas.webp', label: 'Semipermanente', act: 'book:esmaltado-semipermanente' },
+  { img: 'media/cafeteria.webp', label: 'Cafetería', act: '#cafe' },
 ];
-const hero = { i: 0, n: 0, timer: null, dur: 7000, busy: false, py: 0 };
 function renderHero() {
-  hero.n = SLIDES.length;
-  const btn = ([label, act], solid) => act.startsWith('#') ? `<a class="btn${solid ? ' solid' : ''}" href="${act}" style="${solid ? 'background:var(--marfil);color:var(--tinta);border-color:var(--marfil)' : ''}">${esc(label)}</a>` : `<button class="btn" data-act="${esc(act)}" ${solid ? 'style="background:var(--marfil);color:var(--tinta);border-color:var(--marfil)"' : ''}>${esc(label)}</button>`;
-  $('#slides').innerHTML = SLIDES.map((s, i) => `<div class="slide" role="group" aria-roledescription="diapositiva" aria-label="${i + 1} de ${SLIDES.length}">
-    <div class="bg"><img src="${MEDIA(s.img)}" style="object-position:${s.pos || 'center 40%'}" alt="" ${i ? 'loading="lazy"' : 'fetchpriority="high"'}></div>
-    <div class="copy"><div class="eyebrow">${esc(s.eyebrow)}</div><h2>${esc(s.title)}</h2><div class="sub">${esc(s.sub)}</div><div class="cta">${btn(s.cta, true)}${s.cta2 ? btn(s.cta2) : ''}</div></div></div>`).join('');
-  $('#heroDots').innerHTML = SLIDES.map((s, i) => `<li><button data-slide="${i}" aria-label="Ir a ${esc(s.title)}"><span class="n">${String(i + 1).padStart(2, '0')}</span><span class="bar"><i></i></span></button></li>`).join('');
-  $('#heroDots').style.setProperty('--dur', hero.dur + 'ms');
-  layoutSlides(0, 0, false); updateDots(); startAuto();
+  $('#collage').innerHTML = COLLAGE.map((c, i) => {
+    const inner = `<img src="${MEDIA(c.img)}" alt="" style="object-position:${c.pos || 'center'}" ${i < 3 ? 'fetchpriority="high"' : 'loading="lazy"'}><span>${esc(c.label)}</span>`;
+    return c.act.startsWith('#') ? `<a class="tile t${i + 1}" href="${c.act}">${inner}</a>` : `<button class="tile t${i + 1}" data-act="${esc(c.act)}" aria-label="${esc(c.label)}">${inner}</button>`;
+  }).join('');
 }
-function layoutSlides(active, dir, animate) {
-  const slides = $$('.slide'), H = $('#hero');
-  if (animate && !reduced) {
-    const inc = slides[active];
-    H.classList.remove('animating');
-    inc.style.transform = `translate3d(0, ${dir > 0 ? 100 : -100}%, 0)`;
-    inc.querySelector('.bg').style.transform = `translate3d(0, ${dir > 0 ? -40 : 40}%, 0) scale(1.08)`;
-    void inc.offsetHeight;
-    H.classList.add('animating');
-  }
-  slides.forEach((s, i) => {
-    const bg = s.querySelector('.bg');
-    s.classList.toggle('is-active', i === active);
-    s.classList.toggle('leaving', animate && i === hero.prev);
-    s.setAttribute('aria-hidden', i === active ? 'false' : 'true');
-    if (i === active) { s.style.transform = 'translate3d(0,0,0)'; bg.style.transform = `translate3d(0, ${hero.py}px, 0) scale(1.08)`; }
-    else if (animate && i === hero.prev) { s.style.transform = `translate3d(0, ${dir > 0 ? -100 : 100}%, 0)`; bg.style.transform = `translate3d(0, ${dir > 0 ? 45 : -45}%, 0) scale(1.08)`; }
-    else s.style.transform = 'translate3d(0, 100%, 0)';
-  });
-  if (animate) setTimeout(() => { H.classList.remove('animating'); hero.busy = false; }, 1200);
-}
-function go(to, dir) {
-  if (hero.busy || hero.n < 2) return;
-  to = (to + hero.n) % hero.n;
-  if (to === hero.i) return;
-  hero.busy = true; hero.prev = hero.i; hero.i = to;
-  layoutSlides(to, dir ?? (to > hero.prev ? 1 : -1), true);
-  updateDots(); startAuto();
-}
-function updateDots() {
-  $$('#heroDots button').forEach((b, i) => { b.setAttribute('aria-current', i === hero.i ? 'true' : 'false'); const bar = b.querySelector('.bar i'); bar.style.animation = 'none'; void bar.offsetHeight; bar.style.animation = ''; });
-  $('#heroCount').textContent = `${String(hero.i + 1).padStart(2, '0')} / ${String(hero.n).padStart(2, '0')}`;
-}
-function startAuto() { clearTimeout(hero.timer); if (reduced || hero.n < 2 || $('#hero').classList.contains('paused')) return; hero.timer = setTimeout(() => go(hero.i + 1, 1), hero.dur); }
-function bindHero() {
-  $('#heroUp').addEventListener('click', () => go(hero.i - 1, -1));
-  $('#heroDown').addEventListener('click', () => go(hero.i + 1, 1));
-  $('#heroDots').addEventListener('click', (e) => { const b = e.target.closest('[data-slide]'); if (b) go(Number(b.dataset.slide)); });
-  const H = $('#hero');
-  H.addEventListener('mouseenter', () => { H.classList.add('paused'); clearTimeout(hero.timer); });
-  H.addEventListener('mouseleave', () => { H.classList.remove('paused'); startAuto(); });
-  H.addEventListener('focusin', () => { H.classList.add('paused'); clearTimeout(hero.timer); });
-  H.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); go(hero.i + 1, 1); } if (e.key === 'ArrowUp') { e.preventDefault(); go(hero.i - 1, -1); } });
-  let t0 = null;
-  H.addEventListener('touchstart', (e) => { t0 = { y: e.touches[0].clientY, x: e.touches[0].clientX, t: Date.now() }; }, { passive: true });
-  H.addEventListener('touchend', (e) => {
-    if (!t0) return;
-    const dy = e.changedTouches[0].clientY - t0.y, dx = e.changedTouches[0].clientX - t0.x;
-    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && Date.now() - t0.t < 600) go(hero.i + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1);
-    t0 = null;
-  });
-  document.addEventListener('visibilitychange', () => (document.hidden ? clearTimeout(hero.timer) : startAuto()));
-}
+function bindHero() {}
 let ticking = false;
 function onScroll() {
   $('header.top').classList.toggle('scrolled', window.scrollY > 40);
@@ -120,12 +66,6 @@ function onScroll() {
   ticking = true;
   requestAnimationFrame(() => {
     ticking = false;
-    const y = window.scrollY, H = $('#hero'), h = H.offsetHeight;
-    if (y < h * 1.2 && !H.classList.contains('animating')) {
-      hero.py = y * 0.38;
-      const s = $$('.slide')[hero.i];
-      if (s) { s.querySelector('.bg').style.transform = `translate3d(0, ${hero.py}px, 0) scale(1.08)`; const c = s.querySelector('.copy'); c.style.setProperty('--ty', `${y * 0.16}px`); c.style.setProperty('--to', Math.max(0, 1 - y / (h * 0.75)).toFixed(3)); }
-    }
     const band = $('#ritual-band'), r = band.getBoundingClientRect();
     if (r.bottom > 0 && r.top < innerHeight) $('#bandBg').style.setProperty('--py', `${((r.top + r.height / 2) - innerHeight / 2) * -0.22}px`);
   });
