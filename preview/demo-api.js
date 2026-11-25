@@ -13,6 +13,8 @@ const env = {
   sendEmail: async () => 'ok',
   hashPassword: async (pw) => 'demo$' + pw,
   checkPassword: async (pw, h) => h === 'demo$' + pw,
+  // En la demo las fotos quedan en el navegador (ya vienen achicadas desde el panel).
+  saveImage: async (dataUrl) => { if (!/^data:image\/(webp|jpeg|png);base64,/.test(String(dataUrl || ''))) throw new C.ApiError(422, 'Elegí una foto (JPG, PNG o WEBP).'); return dataUrl; },
 };
 
 function seedDemo() {

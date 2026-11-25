@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { turnosPage } from './lib/turnos-page.js';
+import { saveImage, deleteImage, UPLOADS } from './lib/images.js';
 import crypto from 'node:crypto';
 import { config, ROOT } from './lib/config.js';
 import { state, withState } from './lib/store.js';
@@ -44,6 +45,8 @@ export const env = {
   sendEmail,
   hashPassword: async (pw) => hashPassword(pw),
   checkPassword: async (pw, h) => checkPassword(pw, h),
+  saveImage,
+  deleteImage,
 };
 
 // ── App ──────────────────────────────────────────────────
@@ -51,7 +54,9 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' }); next(); });
-app.use(express.json({ limit: '100kb' }));
+// Las fotos de los trabajos viajan como data URL: esas rutas del panel aceptan hasta 12 MB; el resto, 100 KB.
+const bigJson = express.json({ limit: '12mb' }), smallJson = express.json({ limit: '100kb' });
+app.use((req, res, next) => (/^\/api\/admin\/(services\/\d+\/works|works-before)/.test(req.path) ? bigJson : smallJson)(req, res, next));
 
 // Límite simple por IP para lo que crea cosas (reservas, gift cards, ingreso al panel).
 const hits = new Map();
@@ -103,6 +108,7 @@ app.use('/api', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+app.use('/uploads', express.static(UPLOADS, { maxAge: '30d', fallthrough: false }));
 app.use('/admin', express.static(path.join(ROOT, 'admin'), { index: 'index.html' }));
 // Turnero en su propia dirección (/turnos, el link para Instagram): la misma página, a pantalla completa y directo en la reserva.
 app.get('/turnos', (req, res) => {
@@ -121,7 +127,7 @@ app.use((err, req, res, next) => {
 });
 
 // Primer usuario del panel desde .env
-if (!state.staff.length && config.adminEmail && config.adminPassword) {
+if (!state.staff.some((u) => u.role === 'admin') && config.adminEmail && config.adminPassword) {
   await withState((st) => addStaff(st, env, { email: config.adminEmail, password: config.adminPassword, name: 'Administración', role: 'admin' }));
   console.log(`Usuario del panel creado: ${config.adminEmail}`);
 }

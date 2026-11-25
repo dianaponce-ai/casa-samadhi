@@ -358,6 +358,29 @@ async function viewClient(key) {
 
 // ── Servicios ────────────────────────────────────────────
 const MODES = { online: 'Reserva online con seña', whatsapp: 'Se coordina por WhatsApp', menu: 'Solo en la lista de precios' };
+// Fotos: rutas de /media, fotos subidas (/uploads) o, en la demo, la foto misma.
+const IMG = (u) => (window.__CASA_MEDIA ? window.__CASA_MEDIA(u) : /^(data:|https?:)/.test(u || '') ? u : '/' + String(u || '').replace(/^\//, ''));
+/** Achica la foto en el navegador antes de subirla (lado mayor 1200 px, WEBP). */
+async function shrinkImage(file, max = 1200) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/webp', 0.82);
+  return url.startsWith('data:image/webp') ? url : c.toDataURL('image/jpeg', 0.85);
+}
+/** Trabajos (antes y después) del servicio que se está editando. */
+function worksEditor(ed, r) {
+  const works = ed.works || [], max = r.maxWorks || 24;
+  return `<div class="card-sub" id="wEd"><h3>Trabajos · antes y después</h3>
+    <p class="small muted">Se ven en miniatura en la web y en el turnero (hasta 8 en computadora y 4 en el celular), el más nuevo primero. Al tocarlos se comparan con la foto de "antes".</p>
+    <div class="wthumbs">${works.map((w) => `<figure class="wthumb"><img src="${IMG(w.after)}" alt="">${w.before ? '<span class="pill">Antes propio</span>' : ''}<button class="btn sm danger" data-wdel="${esc(w.id)}">Borrar</button></figure>`).join('') || '<p class="muted small">Todavía no tiene trabajos.</p>'}</div>
+    <div class="row wup"><label class="fl"><span>Foto del trabajo (después)</span><input type="file" id="wAfter" accept="image/*"></label>
+      <label class="fl"><span>Foto de antes (opcional)</span><input type="file" id="wBefore" accept="image/*"><span class="help">Si no subís una, se usa la de "antes" para todos.</span></label></div>
+    <div class="actions"><button class="btn primary" id="wAdd" ${works.length >= max ? 'disabled' : ''}>Sumar trabajo</button><span class="small muted">${works.length} de ${max}</span></div>
+    <div class="wbefore"><img src="${IMG(r.worksBefore)}" alt="Foto de antes para todos"><div><b>Foto de "antes" para todos</b><p class="small muted">Es la que se compara con cada trabajo que no tiene la suya.</p><label class="btn sm"><input type="file" id="wAll" accept="image/*" hidden>Cambiar foto de antes</label></div></div>
+    <p class="err" id="wErr"></p></div>`;
+}
 async function viewServices(editId = null) {
   SERVICES = null;
   const list = await services();
@@ -373,6 +396,7 @@ async function viewServices(editId = null) {
       <div class="row"><label class="fl"><span>Precio ($)</span><input id="ePrice" type="number" min="0" value="${ed.price ?? ''}" placeholder="Vacío = consultar"><span class="help">En efectivo. La seña se calcula sobre este precio.</span></label><label class="fl"><span>Precio con transferencia ($, opcional)</span><input id="ePriceT" type="number" min="0" value="${ed.price_transfer ?? ''}" placeholder="Vacío = el mismo"></label><label class="fl"><span>Duración (minutos)</span><input id="eDur" type="number" min="0" step="5" value="${ed.duration}"></label>
         <label class="fl"><span>WhatsApp propio (opcional)</span><input id="eWa" value="${esc(ed.whatsapp)}" placeholder="Si lo atiende otra persona"></label></div>
       <label class="fl"><span>Descripción corta</span><textarea id="eShort" rows="2">${esc(ed.short)}</textarea></label>
+      ${ed.id ? worksEditor(ed, r) : '<p class="small muted">Guardá el servicio para poder sumarle trabajos de antes y después.</p>'}
       <label class="fl"><span>Qué incluye (uno por línea)</span><span class="help">Para sumar una explicación, escribí: Título — explicación. En el turnero se ve como en las placas.</span><textarea id="eInc" rows="6">${esc((ed.includes || []).join('\n'))}</textarea></label>
       <div class="row"><label class="fl"><span>Foto</span><select id="eImg"><option value="">Sin foto</option>${['headspa-ritual', 'headspa-agua', 'headspa-joya', 'camilla', 'manicuria-cafe', 'manicuria-lampara', 'espacio-taller', 'espacio-mesa', 'unas', 'barras-access', 'deco-cristal', 'cafeteria', 'cafe-plantas', 'vitrina'].map((f) => `<option value="media/${f}.webp" ${ed.image === `media/${f}.webp` ? 'selected' : ''}>${f}</option>`).join('')}${ed.image && !ed.image.startsWith('media/') ? `<option selected value="${esc(ed.image)}">${esc(ed.image)}</option>` : ''}</select></label>
         <div class="fl"><span>Días en que se ofrece</span><div class="chips">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" data-day="${d}" ${!ed.days?.length || ed.days.includes(d) ? 'checked' : ''}> ${DAYS[d].slice(0, 3)}</label>`).join('')}</div></div></div>
@@ -397,6 +421,22 @@ async function viewServices(editId = null) {
   if (!ed) return;
   $('#sEd').scrollIntoView({ block: 'start' });
   $('#eCancel').onclick = () => viewServices();
+  // Trabajos: subir, borrar y cambiar la foto de "antes" para todos.
+  const wBusy = (on) => { for (const b of ROOT.querySelectorAll('#wEd button, #wEd input')) b.disabled = on; };
+  $('#wAdd')?.addEventListener('click', async () => {
+    const a = $('#wAfter').files[0], b = $('#wBefore').files[0];
+    if (!a) { $('#wErr').textContent = 'Elegí la foto del trabajo.'; return; }
+    wBusy(true); $('#wErr').textContent = '';
+    try { await api(`/services/${ed.id}/works`, { method: 'POST', body: { after: await shrinkImage(a), before: b ? await shrinkImage(b) : '' } }); toast('Trabajo sumado'); viewServices(ed.id); }
+    catch (e) { $('#wErr').textContent = e.message; wBusy(false); }
+  });
+  ROOT.querySelectorAll('[data-wdel]').forEach((x) => (x.onclick = (e) => { e.preventDefault(); confirmInline(x, '¿Borrar este trabajo?', async () => { try { await api(`/services/${ed.id}/works/${x.dataset.wdel}`, { method: 'DELETE' }); toast('Trabajo borrado'); viewServices(ed.id); } catch (err) { $('#wErr').textContent = err.message; } }, 'Borrar'); }));
+  $('#wAll')?.addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    wBusy(true);
+    try { await api('/works-before', { method: 'PUT', body: { image: await shrinkImage(f) } }); toast('Foto de antes cambiada'); viewServices(ed.id); }
+    catch (err) { $('#wErr').textContent = err.message; wBusy(false); }
+  });
   $('#eSave').onclick = async () => {
     const days = $$('[data-day]').filter((c) => c.checked).map((c) => Number(c.dataset.day));
     const body = { name: $('#eName').value, tag: $('#eTag').value, category: $('#eCat').value, mode: $('#eMode').value, resource: $('#eRes').value, price: $('#ePrice').value, price_transfer: $('#ePriceT').value, duration: $('#eDur').value, whatsapp: $('#eWa').value, short: $('#eShort').value, includes: $('#eInc').value, image: $('#eImg').value, visible: $('#eVis').checked, days: days.length === 7 ? [] : days };

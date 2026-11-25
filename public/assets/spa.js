@@ -154,13 +154,14 @@ function renderSections() {
       <div class="meta"><span class="price">${s.price ? fmt(s.price) : 'Consultar'}</span><span class="dur">${s.duration ? durTxt(s.duration) : ''}</span></div>
       ${s.short ? `<p>${esc(s.short)}</p>` : ''}
       ${s.includes?.length ? `<ul>${s.includes.map((x) => `<li>${esc(splitInc(x)[0])}</li>`).join('')}</ul>` : ''}
+      ${worksStrip(s)}
       <div class="actions">${actionsFor(s)}</div></div></article>`).join('');
   const mani = SITE.services.filter((s) => s.category === 'manicuria');
   // Dos columnas cuando hay precio con transferencia: efectivo y transferencia.
   const twoPrices = mani.some((s) => s.price_transfer);
   $('#maniMenu').classList.toggle('two', twoPrices);
   $('#maniMenu').innerHTML = (twoPrices ? '<li class="hd" aria-hidden="true"><span></span><span class="pr">Efectivo</span><span class="pr">Transferencia</span></li>' : '')
-    + mani.map((s) => `<li><span class="nm">${esc(s.name)}${s.tag ? `<small>${esc(s.tag)}</small>` : ''}</span>${twoPrices && s.price_transfer
+    + mani.map((s) => `<li><span class="nm">${esc(s.name)}${s.tag ? `<small>${esc(s.tag)}</small>` : ''}${worksStrip(s, { label: false })}</span>${twoPrices && s.price_transfer
       ? `<span class="pr" aria-label="Efectivo ${s.price ? fmt(s.price) : 'Consultar'}">${s.price ? fmt(s.price) : 'Consultar'}</span><span class="pr" aria-label="Transferencia ${fmt(s.price_transfer)}">${fmt(s.price_transfer)}</span>`
       : `<span class="pr${twoPrices ? ' span' : ''}">${s.price ? fmt(s.price) : 'Consultar'}</span>`}</li>`).join('');
   const ther = SITE.services.filter((s) => s.category === 'terapias' || !['rituales', 'manicuria', 'espacio'].includes(s.category));
@@ -281,9 +282,47 @@ function plaque(s) {
       ${lead ? `<p class="pl-lead">${esc(lead)}</p>` : ''}
       ${inc.length ? `<div class="pl-inc-t">Incluye</div><ul class="pl-inc">${inc.map((x) => { const [t, d] = splitInc(x); return `<li><span class="ic">${icon(incIcon(t))}</span><span class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</span></li>`; }).join('')}</ul>` : ''}
       <div class="pl-price${s.price_transfer ? ' two' : ''}">${price}<span class="sep" aria-hidden="true"></span><span class="pd">${icon('clock')}${durTxt(s.duration)}</span></div>
+      ${worksStrip(s)}
     </div>
   </article>`;
 }
+
+// ── Trabajos: antes y después ────────────────────────────
+// Cada servicio muestra sus trabajos en miniatura (hasta 8 en la web y 4 en el celular). Al tocar uno se abre
+// la comparación: la foto de "antes" (la misma para todos, salvo que el trabajo tenga la suya) y la de "después".
+const worksOf = (s) => (s?.works || []).filter((w) => w.after);
+const beforeOf = (w) => w.before || SITE.site.worksBefore || '';
+function worksStrip(s, { label = true } = {}) {
+  const list = worksOf(s).slice(0, 8);
+  if (!list.length) return '';
+  return `<div class="works">${label ? `<span class="works-t">Antes &amp; después</span>` : ''}<div class="works-row">${list.map((w, i) => `<button type="button" class="work" data-work="${s.id}:${i}" aria-label="Ver antes y después de ${esc(s.name)} (${i + 1} de ${list.length})"><img src="${MEDIA(w.after)}" alt="" loading="lazy"></button>`).join('')}</div></div>`;
+}
+const wl = { s: null, i: 0 };
+function openWork(serviceId, i) {
+  const s = SITE.services.find((x) => x.id === Number(serviceId));
+  if (!s || !worksOf(s).length) return;
+  Object.assign(wl, { s, i });
+  renderWork();
+  $('#workBox').hidden = false; document.body.classList.add('lb-on');
+  setTimeout(() => $('#workBox .wb-range')?.focus({ preventScroll: true }), 50);
+}
+function renderWork() {
+  const list = worksOf(wl.s).slice(0, 8), w = list[wl.i], n = list.length;
+  const before = beforeOf(w);
+  $('#workBox').innerHTML = `<div class="wb" role="dialog" aria-modal="true" aria-label="Antes y después · ${esc(wl.s.name)}">
+    <div class="wb-head"><div><div class="wb-k">Antes &amp; después</div><div class="wb-n">${esc(wl.s.name)}</div></div><button class="close" data-wclose aria-label="Cerrar">${ICON_X}</button></div>
+    <div class="wb-cmp" style="--pos:50%">
+      <img class="aft" src="${MEDIA(w.after)}" alt="Después: ${esc(wl.s.name)}" draggable="false">
+      ${before ? `<img class="bef" src="${MEDIA(before)}" alt="Antes" draggable="false">` : ''}
+      ${before ? '<span class="wb-l l">Antes</span><span class="wb-l r">Después</span><span class="wb-bar" aria-hidden="true"><i></i></span>' : '<span class="wb-l r">Después</span>'}
+      ${before ? '<input class="wb-range" type="range" min="0" max="100" value="50" aria-label="Deslizá para comparar antes y después">' : ''}
+      ${n > 1 ? `<button class="wb-nav p" data-wnav="-1" aria-label="Trabajo anterior">‹</button><button class="wb-nav n" data-wnav="1" aria-label="Trabajo siguiente">›</button>` : ''}
+    </div>
+    ${n > 1 ? `<div class="wb-dots">${list.map((x, j) => `<button data-wgo="${j}" aria-label="Trabajo ${j + 1}" aria-current="${j === wl.i}"><img src="${MEDIA(x.after)}" alt=""></button>`).join('')}</div>` : ''}
+    ${wl.s.mode === 'online' ? `<button class="btn solid wide" data-wbook="${wl.s.id}">Reservar ${esc(wl.s.name)}</button>` : ''}
+  </div>`;
+}
+function closeWork() { $('#workBox').hidden = true; $('#workBox').innerHTML = ''; document.body.classList.remove('lb-on'); }
 
 // ── Panel lateral ────────────────────────────────────────
 let lastFocus = null;
@@ -736,6 +775,11 @@ function bind() {
     const t = e.target;
     const act = t.closest('[data-act]')?.dataset.act;
     if (act) { const [k, v] = act.split(':'); if (k === 'book') openBooking({ serviceId: svcBySlug(v)?.id }); if (k === 'cat') openBooking({ category: v }); return; }
+    const wk = t.closest('[data-work]'); if (wk) { const [sid, i] = wk.dataset.work.split(':'); return openWork(sid, Number(i)); }
+    if (t.closest('[data-wclose]') || t.id === 'workBox') return closeWork();
+    const wn = t.closest('[data-wnav]'); if (wn) { const n = worksOf(wl.s).slice(0, 8).length; wl.i = (wl.i + Number(wn.dataset.wnav) + n) % n; return renderWork(); }
+    const wg = t.closest('[data-wgo]'); if (wg) { wl.i = Number(wg.dataset.wgo); return renderWork(); }
+    const wb = t.closest('[data-wbook]'); if (wb) { const id = Number(wb.dataset.wbook); closeWork(); if (SOLO) { bk.info = null; bk.service = SITE.services.find((s) => s.id === id); Object.assign(bk, { pro: null, step: 2, days: [], time: '', date: lockDate(), error: '' }); renderBooking(true); loadDays(); return; } return openBooking({ serviceId: id }); }
     if (t.closest('[data-close]')) return closeAll();
     if (t.closest('[data-book]')) return openBooking();
     const bs = t.closest('[data-book-svc]'); if (bs) return openBooking({ serviceId: bs.dataset.bookSvc });
@@ -826,7 +870,19 @@ function bind() {
   $('#menuBtn').addEventListener('click', () => { lastFocus = $('#menuBtn'); $('#mnav').classList.add('on'); $('#scrim').classList.add('on'); });
   $('#logoBtn').addEventListener('click', (e) => { e.preventDefault(); closeAll(); window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); });
   $('#scrim').addEventListener('click', closeAll);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+  document.addEventListener('keydown', (e) => {
+    if (!$('#workBox').hidden) { if (e.key === 'Escape') closeWork(); if (['ArrowLeft', 'ArrowRight'].includes(e.key) && e.target.type !== 'range') $(`#workBox [data-wnav="${e.key === 'ArrowLeft' ? -1 : 1}"]`)?.click(); return; }
+    if (e.key === 'Escape') closeAll();
+  });
+  // Comparación antes/después: el deslizador mueve la línea.
+  document.addEventListener('input', (e) => { if (e.target.classList?.contains('wb-range')) e.target.closest('.wb-cmp').style.setProperty('--pos', e.target.value + '%'); });
+  // Y se arrastra con el dedo o el mouse en cualquier parte de la foto.
+  let drag = null;
+  const slide = (e) => { const r = drag.getBoundingClientRect(), v = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100))); drag.style.setProperty('--pos', v + '%'); const rg = drag.querySelector('.wb-range'); if (rg) rg.value = v; };
+  document.addEventListener('pointerdown', (e) => { const c = e.target.closest('.wb-cmp'); if (!c || e.target.closest('.wb-nav') || !c.querySelector('.bef')) return; drag = c; c.setPointerCapture?.(e.pointerId); slide(e); });
+  document.addEventListener('pointermove', (e) => { if (drag) slide(e); });
+  document.addEventListener('pointerup', () => (drag = null));
+  document.addEventListener('pointercancel', () => (drag = null));
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('hashchange', route);
 }

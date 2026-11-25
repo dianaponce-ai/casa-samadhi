@@ -294,3 +294,15 @@ td.r, th.r { text-align: right; }
 /* Profesionales */
 .h3 { font-size: 13px; font-weight: 500; letter-spacing: .04em; margin: 8px 0 0; color: var(--ink); }
 .page-head .actions select { min-width: 0; max-width: 100%; }
+
+/* Trabajos (antes y después) en la ficha del servicio */
+.card-sub { border: 1px solid var(--line-2); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.card-sub h3 { margin: 0; font-size: 15px; }
+.wthumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.wthumb { margin: 0; display: grid; gap: 6px; position: relative; }
+.wthumb img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; }
+.wthumb .pill { position: absolute; top: 4px; left: 4px; font-size: 10px; }
+.wbefore { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.wbefore img { width: 64px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; }
+.wbefore p { margin: 2px 0 6px; }
+.wbefore label.btn { cursor: pointer; }
