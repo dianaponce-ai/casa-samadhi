@@ -291,7 +291,7 @@ td.r, th.r { text-align: right; }
 .ml-s { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .mail-row button { width: 100%; }
 
-/* Profesionales */
+/* Asesoras */
 .h3 { font-size: 13px; font-weight: 500; letter-spacing: .04em; margin: 8px 0 0; color: var(--ink); }
 .page-head .actions select { min-width: 0; max-width: 100%; }
 
@@ -306,3 +306,19 @@ td.r, th.r { text-align: right; }
 .wbefore img { width: 64px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; }
 .wbefore p { margin: 2px 0 6px; }
 .wbefore label.btn { cursor: pointer; }
+
+/* Ficha de clienta: fotos de antes y después */
+.cphotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.cphoto { margin: 0; display: grid; gap: 6px; align-content: start; }
+.cphoto .pair { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; position: relative; }
+.cphoto .pair img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 8px; }
+.cphoto .pair span { position: absolute; top: 6px; left: 6px; font-size: 10px; background: rgba(25, 24, 22, .55); color: #fff; padding: 2px 7px; border-radius: 999px; }
+.cphoto .pair span.r { left: auto; right: 6px; }
+.cphoto figcaption { font-size: 12px; }
+
+/* Menú en secciones: Turnos, CRM y Administración */
+.side nav .nav-group { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 4px; }
+.side nav .nav-group:first-child { padding-top: 2px; }
+@media (max-width: 900px) { .side nav .nav-group { padding: 8px 6px 8px 14px; align-self: center; white-space: nowrap; } }
+/* Caja */
+.warn { color: var(--warn, #9a5b14); }

@@ -22,7 +22,7 @@ function seedDemo() {
   st.customers = [];
   const slugIds = (list) => list.map((x) => st.services.find((s) => s.slug === x)?.id).filter(Boolean);
   for (const u of DEMO_USERS) {
-    // En la demo, el acceso de profesional de prueba es el de Trinidad (head spa).
+    // En la demo, el acceso de asesora de prueba es el de Trinidad (head spa).
     const tri = u.role === 'pro' && st.staff.find((x) => x.role === 'pro' && x.name === 'Trinidad');
     if (tri) { Object.assign(tri, { email: u.email, password_hash: 'demo$' + u.password, phone: '221 555-4010', pay: u.pay }); continue; }
     if (u.kind === 'staff') st.staff.push({ id: ++st.ids.staff, email: u.email, name: u.name, role: u.role, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 120 * 864e5).toISOString(),
@@ -30,7 +30,7 @@ function seedDemo() {
     else st.customers.push({ id: (st.ids.customer = (st.ids.customer || 0) + 1), email: u.email, name: u.name, phone: u.phone, password_hash: 'demo$' + u.password, created_at: new Date(Date.now() - 40 * 864e5).toISOString() });
   }
   st.settings.booking.staffEmails = 'turnos@casasamadhi.demo';
-  // Profesionales: Trinidad (head spa) y Belén (manicuría) ya vienen en los datos iniciales; en la demo, con comisión de ejemplo.
+  // Asesoras: Trinidad (head spa) y Belén (manicuría) ya vienen en los datos iniciales; en la demo, con comisión de ejemplo.
   const bel = st.staff.find((x) => x.role === 'pro' && x.name === 'Belén');
   if (bel) Object.assign(bel, { phone: '221 555-4020', pay: { type: 'comision', percent: 40, base: 0 } });
   st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'ALIAS.DE.PRUEBA', holder: 'Casa Samadhi (datos de prueba)', bank: 'Banco de ejemplo' };
@@ -91,7 +91,7 @@ function seedDemo() {
   const gc = new Date(Date.now() - 20 * 864e5).toISOString();
   st.giftcards.push({ id: ++st.ids.gift, code: 'CS-LUCI-A26X', token: 'clgift' + Math.random().toString(36).slice(2), amount: 90000, balance: 90000, service_id: null, service_name: 'Ritual profundo con pindas', buyer_name: 'Carolina Gómez', buyer_email: 'carolina.gomez@ejemplo.com', to_name: cl.name, to_email: cl.email, message: '¡Feliz cumple, amiga! Te lo merecés.', send_to_recipient: true,
     status: 'active', source: 'web', created_at: gc, paid_at: gc, expires_at: new Date(Date.now() + 160 * 864e5).toISOString(), pay_url: null, payment_id: 'SIM-2', history: [{ at: gc, amount: 90000, note: 'Gift card de ejemplo' }] });
-  // Cada turno de ejemplo queda a nombre de una profesional que hace ese servicio (y está libre).
+  // Cada turno de ejemplo queda a nombre de una asesora que hace ese servicio (y está libre).
   const pros = st.staff.filter((u) => u.role === 'pro');
   for (const b of [...st.bookings].sort((a, c) => a.start.localeCompare(c.start))) {
     const can = pros.filter((p) => p.services.includes(b.service_id));
@@ -113,8 +113,8 @@ function seedDemo() {
   // Historial de cambios de ejemplo
   const adm = st.staff.find((u) => u.role === 'admin'), rec = st.staff.find((u) => u.role === 'staff'), ana = pros[0];
   const log = (u, h, action) => st.audit.push({ id: (st.ids.audit = (st.ids.audit || 0) + 1), at: new Date(Date.now() - h * 3600e3).toISOString(), user_id: u.id, user: u.name, role: u.role, action });
-  log(adm, 240, 'Editó la profesional Trinidad · Solo comisión 40%');
-  log(adm, 239, 'Editó la profesional Belén · Solo comisión 40%');
+  log(adm, 240, 'Editó la asesora Trinidad · Solo comisión 40%');
+  log(adm, 239, 'Editó la asesora Belén · Solo comisión 40%');
   log(adm, 200, 'Cambió la configuración: medios de pago');
   log(rec, 50, 'Cargó el turno de un llamado por WhatsApp');
   log(ana, 30, 'Ingresó al panel');

@@ -56,7 +56,7 @@ app.disable('x-powered-by');
 app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'X-Frame-Options': 'SAMEORIGIN' }); next(); });
 // Las fotos de los trabajos viajan como data URL: esas rutas del panel aceptan hasta 12 MB; el resto, 100 KB.
 const bigJson = express.json({ limit: '12mb' }), smallJson = express.json({ limit: '100kb' });
-app.use((req, res, next) => (/^\/api\/admin\/(services\/\d+\/works|works-before)/.test(req.path) ? bigJson : smallJson)(req, res, next));
+app.use((req, res, next) => (/^\/api\/admin\/(services\/\d+\/works|works-before|clients\/photos)/.test(req.path) ? bigJson : smallJson)(req, res, next));
 
 // Límite simple por IP para lo que crea cosas (reservas, gift cards, ingreso al panel).
 const hits = new Map();
@@ -136,6 +136,10 @@ app.use((err, req, res, next) => {
 if (!state.staff.some((u) => u.role === 'admin') && config.adminEmail && config.adminPassword) {
   await withState((st) => addStaff(st, env, { email: config.adminEmail, password: config.adminPassword, name: 'Administración', role: 'admin' }));
   console.log(`Usuario del panel creado: ${config.adminEmail}`);
+}
+// Contraseña inicial del web master (si todavía no tiene una).
+if (config.webmasterPassword && config.webmasterPassword.length >= 10) {
+  await withState(async (st) => { const u = st.staff.find((x) => x.role === 'webmaster' && !x.password_hash); if (u) { u.password_hash = hashPassword(config.webmasterPassword); console.log(`Contraseña del web master cargada: ${u.email}`); } });
 }
 // Tareas cada minuto: libera reservas sin seña, manda recordatorios, vence gift cards.
 setInterval(() => withState((st) => tick(st, env).then((changed) => ({ save: changed })), false).catch((e) => console.error('Tareas:', e.message)), 60e3).unref();

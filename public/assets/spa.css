@@ -370,7 +370,7 @@ form.bk { display: grid; gap: 14px; padding-top: 6px; }
 .check { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; font-size: 13px; }
 .check input { margin-top: 3px; accent-color: var(--tinta); }
 .gift-apply { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
-/* Reserva con varios servicios, profesionales y medio de pago */
+/* Reserva con varios servicios, asesoras y medio de pago */
 .times.pros { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 .times.pros .time { padding-inline: 8px; overflow-wrap: anywhere; }
 .items { display: grid; gap: 8px; }
@@ -621,3 +621,7 @@ body.lb-on { overflow: hidden; }
 .cal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .cal-btns .btn { border-radius: 999px; }
 .time[disabled] { opacity: .35; cursor: not-allowed; }
+
+/* Mi cuenta: reservar arriba de todo */
+.acc-book { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.drawer .acc-book .btn { flex: 1 1 180px; }

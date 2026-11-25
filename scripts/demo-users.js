@@ -5,7 +5,8 @@ import { env } from '../server/index.js';
 import { DEMO_USERS } from './demo-users-list.js';
 
 const borrar = process.argv.includes('--borrar');
-const emails = DEMO_USERS.map((u) => u.email);
+// También el email anterior de la asesora de prueba (antes se llamaba "profesional"), por si quedó creado.
+const emails = [...DEMO_USERS.map((u) => u.email), 'profesional@casasamadhi.demo'];
 await withState(async (st) => {
   st.customers = st.customers || [];
   if (borrar) {
@@ -18,5 +19,5 @@ await withState(async (st) => {
     if (u.kind === 'customer' && !st.customers.some((x) => x.email === u.email)) await addCustomer(st, env, u);
   }
 });
-console.log(borrar ? 'Usuarios de prueba borrados.' : DEMO_USERS.map((u) => `${u.kind === 'staff' ? ({ admin: 'Administración', staff: 'Recepción', pro: 'Profesional' }[u.role]) : 'Clienta'}: ${u.email} / ${u.password}`).join('\n'));
+console.log(borrar ? 'Usuarios de prueba borrados.' : DEMO_USERS.map((u) => `${u.kind === 'staff' ? ({ webmaster: 'Web master', admin: 'Administración', staff: 'Recepción', pro: 'Asesora de belleza' }[u.role]) : 'Clienta'}: ${u.email} / ${u.password}`).join('\n'));
 process.exit(0);

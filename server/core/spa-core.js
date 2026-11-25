@@ -6,7 +6,7 @@
 //   env.createPayment({ kind, token, title, amount, email }) → Promise<url>
 //   env.sendEmail({ template, to, subject, html }) → Promise
 //   env.hashPassword(pw) / env.checkPassword(pw, hash)
-import { CATEGORIES, RESOURCES, SERVICES, SITE, HOURS, BOOKING, PAYMENTS, GIFTCARDS, FAQ, TERMS, PROS } from './defaults.js';
+import { CATEGORIES, RESOURCES, SERVICES, SITE, HOURS, BOOKING, PAYMENTS, GIFTCARDS, FAQ, TERMS, PROS, WEBMASTER } from './defaults.js';
 import { renderEmail, TEMPLATES, GROUPS, VARS, sampleContext, longDate } from './emails.js';
 
 export const STATE_VERSION = 1;
@@ -22,6 +22,8 @@ function ensure(st) {
   st.ids.customer = st.ids.customer || 0;
   st.audit = st.audit || [];
   st.ids.audit = st.ids.audit || 0;
+  st.cash = st.cash || { moves: [], closings: [] };
+  st.ids.cash = st.ids.cash || 0;
   st.settings.pay = { ...structuredClone(PAYMENTS), ...(st.settings.pay || {}) };
   migrate(st);
 }
@@ -113,6 +115,7 @@ const MIGRATIONS = {
     }
   },
   'profesionales-2026-11': (st) => addDefaultPros(st, new Date().toISOString()),
+  'webmaster-2026-11': (st) => addWebmaster(st, new Date().toISOString()),
   'trabajos-2026-11': (st) => {
     // Trabajos de ejemplo (antes y después) para los servicios de manicuría que todavía no tienen.
     if (!st.settings.site.worksBefore) st.settings.site.worksBefore = SITE.worksBefore;
@@ -146,14 +149,20 @@ const MIGRATIONS = {
     for (const p of prosAll(st)) if (p.services) p.services = p.services.filter((id) => id !== s.id);
   },
 };
-/** Suma a las profesionales de la casa (Trinidad y Belén) con los servicios de su sección, si todavía no están. */
+/** El usuario web master (sin contraseña hasta que la defina). */
+function addWebmaster(st, at) {
+  if (st.staff.some((u) => u.email === WEBMASTER.email)) return;
+  st.ids.staff = Math.max(st.ids.staff || 0, ...st.staff.map((u) => u.id || 0));
+  st.staff.push({ id: ++st.ids.staff, email: WEBMASTER.email, name: WEBMASTER.name, role: 'webmaster', password_hash: null, created_at: at });
+}
+/** Suma a las asesoras de la casa (Trinidad y Belén) con los servicios de su sección, si todavía no están. */
 function addDefaultPros(st, at) {
   st.ids.staff = Math.max(st.ids.staff || 0, ...st.staff.map((u) => u.id || 0));
   for (const p of PROS) {
     const ids = st.services.filter((s) => p.categories.includes(s.category) && s.mode !== 'menu').map((s) => s.id);
     const prev = st.staff.find((u) => u.role === 'pro' && u.name.trim().toLowerCase() === p.name.toLowerCase());
     if (prev) { prev.services = [...new Set([...(prev.services || []), ...ids])]; prev.specialty = prev.specialty || p.specialty; continue; }
-    // Sin email ni contraseña: atiende turnos; el acceso al panel y la comisión se cargan en Panel → Profesionales.
+    // Sin email ni contraseña: atiende turnos; el acceso al panel y la comisión se cargan en Panel → Asesoras.
     st.staff.push({ id: ++st.ids.staff, email: '', name: p.name, role: 'pro', password_hash: null, created_at: at, active: true, specialty: p.specialty, services: ids, pay: { type: 'comision', percent: 0, base: 0 } });
   }
 }
@@ -165,8 +174,10 @@ function migrate(st) {
 export function serviceWhatsapp(st) {
   return st.settings.site.whatsapp;
 }
-export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit'];
-export const ROLES = { admin: 'Administración', staff: 'Recepción', pro: 'Profesional' };
+export const COLLECTIONS = ['settings', 'services', 'bookings', 'giftcards', 'blocks', 'events', 'withdrawals', 'emails', 'staff', 'payments', 'ids', 'meta', 'customers', 'resets', 'crm', 'audit', 'cash'];
+export const ROLES = { webmaster: 'Web master', admin: 'Administración', staff: 'Recepción', pro: 'Asesora de belleza' };
+/** Administración y web master tienen los mismos permisos en el panel. */
+export const isAdminRole = (u) => u?.role === 'admin' || u?.role === 'webmaster';
 export const BOOKING_STATUS = { pending_payment: 'Esperando seña', pending_transfer: 'Esperando transferencia', confirmed: 'Confirmado', completed: 'Realizado', cancelled: 'Cancelado', no_show: 'No vino', expired: 'Seña vencida', attention: 'Revisar' };
 export const PAY_METHODS = { mp: 'Mercado Pago', transfer: 'Transferencia', local: 'En la casa', gift: 'Gift card', none: 'Sin seña' };
 export const PAY_TYPES = { comision: 'Solo comisión', basico_comision: 'Básico + comisión' };
@@ -182,12 +193,13 @@ export function seedState() {
       site: { ...SITE }, booking: { ...BOOKING }, pay: structuredClone(PAYMENTS), hours: structuredClone(HOURS), giftcards: structuredClone(GIFTCARDS),
       resources: structuredClone(RESOURCES), categories: structuredClone(CATEGORIES), content: { faq: structuredClone(FAQ), terms: TERMS }, emails: structuredClone(EMAIL_DEFAULTS),
     },
-    meta: { lastDaily: '', migrations: Object.keys(MIGRATIONS) }, customers: [], resets: [], crm: {}, audit: [],
+    meta: { lastDaily: '', migrations: Object.keys(MIGRATIONS) }, customers: [], resets: [], crm: {}, audit: [], cash: { moves: [], closings: [] },
     services: [], bookings: [], giftcards: [], blocks: [], events: [], withdrawals: [], emails: [], staff: [], payments: [],
     ids: { service: 0, booking: 0, gift: 0, block: 0, event: 0, withdrawal: 0, email: 0, staff: 0, payment: 0, audit: 0, bookingNumber: 1000 },
   };
   SERVICES.forEach((s, i) => st.services.push({ id: ++st.ids.service, position: i, visible: true, featured: false, tag: '', short: '', includes: [], image: '', days: [], whatsapp: '', price_transfer: null, works: [], ...structuredClone(s) }));
   addDefaultPros(st, new Date(0).toISOString());
+  addWebmaster(st, new Date(0).toISOString());
   return st;
 }
 
@@ -221,8 +233,8 @@ const errs = (e) => { const keys = Object.keys(e).filter((k) => e[k]); if (keys.
 const blocking = (b, nowMs) => b.status === 'confirmed' || b.status === 'attention' || (PENDING.includes(b.status) && Date.parse(b.hold_until) > nowMs);
 function capacityOf(st, resource) { return Math.max(1, Number(st.settings.resources.find((r) => r.key === resource)?.capacity) || 1); }
 
-// ── Profesionales ────────────────────────────────────────
-// Son usuarios del panel con rol 'pro'. Si un servicio tiene profesionales asignados, solo se puede
+// ── Asesoras ────────────────────────────────────────
+// Son usuarios del panel con rol 'pro'. Si un servicio tiene asesoras asignados, solo se puede
 // reservar cuando al menos uno de ellos está libre; el turno queda a nombre de esa persona.
 export const prosAll = (st) => st.staff.filter((u) => u.role === 'pro');
 export const prosFor = (st, service) => prosAll(st).filter((u) => u.active !== false && (u.services || []).includes(service.id));
@@ -231,7 +243,7 @@ function proFree(st, nowMs, proId, date, startMin, dur, ignoreId = null) {
   return !st.bookings.some((b) => b.pro_id === proId && b.id !== ignoreId && b.start.startsWith(date) && blocking(b, nowMs)
     && startMin < toMin(b.start.slice(11)) + b.duration && toMin(b.start.slice(11)) < startMin + dur);
 }
-/** Elige quién atiende: la profesional pedida si está libre, o la que tenga menos turnos ese día. */
+/** Elige quién atiende: la asesora pedida si está libre, o la que tenga menos turnos ese día. */
 function pickPro(st, env, service, date, time, { pro = null, ignoreId = null } = {}) {
   const pros = prosFor(st, service);
   if (!pros.length) return null;
@@ -401,7 +413,7 @@ const giftLink = (env, g) => `${env.publicUrl}/#gift/${g.token}`;
 /** Email a la clienta sobre la reserva completa (una sola vez aunque tenga varios servicios). */
 const mailClient = (st, env, template, b, extra = {}) => { const g = groupView(st, b); return sendEmail(st, env, template, g.email, { booking: g, link: bookingLink(env, g), ...extra }, { booking_id: g.id }); };
 const mailTeam = (st, env, template, b, extra = {}) => { const g = groupView(st, b); return sendEmail(st, env, template, staffTo(st), { booking: g, ...extra }, { booking_id: g.id }); };
-/** Aviso a cada profesional por sus turnos de la reserva. */
+/** Aviso a cada asesora por sus turnos de la reserva. */
 async function mailPros(st, env, template, list) {
   for (const x of list) {
     const p = x.pro_id && st.staff.find((u) => u.id === x.pro_id);
@@ -511,7 +523,7 @@ async function createBooking(st, env, body, customer = null) {
   }
   return { booking: publicBooking(st, env, lead), pay_url: lead.pay_url };
 }
-/** Confirmación: email a la clienta, al equipo (si no lo confirmó el equipo mismo) y a cada profesional. */
+/** Confirmación: email a la clienta, al equipo (si no lo confirmó el equipo mismo) y a cada asesora. */
 async function confirmEmails(st, env, b, { byStaff = false } = {}) {
   const list = groupOf(st, b).filter((x) => x.status === 'confirmed');
   await mailClient(st, env, 'booking_confirmed', b);
@@ -548,7 +560,7 @@ async function settleTransfer(st, env, b, staff, ok, amount = null) {
   const got = amount === null || amount === '' ? due : Math.max(0, Math.round(Number(amount) || 0));
   for (const x of list) {
     const free = x.status === 'pending_transfer' || slotsFor(st, env, { ...(st.services.find((s) => s.id === x.service_id) || x), duration: x.duration, resource: x.resource, days: [] }, x.start.slice(0, 10), { ignoreId: x.id, staff: true, pro: x.pro_id }).includes(x.start.slice(11));
-    x.deposit_paid = due ? Math.round(got * (x.deposit_due / due)) : 0;
+    x.deposit_paid = due ? Math.round(got * (x.deposit_due / due)) : 0; x.deposit_at = iso(env);
     x.status = free ? 'confirmed' : 'attention';
     x.history.push({ at: iso(env), text: free ? `Transferencia recibida (${fmtMoney(x.deposit_paid)}), confirmada por ${who}` : `Transferencia recibida fuera de término y el horario ya estaba ocupado (${who}): reprogramar o devolver` });
   }
@@ -607,7 +619,7 @@ export async function applyPayment(st, env, { kind, token: tk, status, amount, p
       const due = sum(open, 'deposit_due'), got = Number(amount) || due;
       for (const x of open) {
         x.payment_id = payment_id || null; x.pay_method = 'mp';
-        x.deposit_paid = due ? Math.round(got * (x.deposit_due / due)) : 0;
+        x.deposit_paid = due ? Math.round(got * (x.deposit_due / due)) : 0; x.deposit_at = iso(env);
         if (x.status === 'expired') {
           // Pagó después de que venció la reserva: si el horario sigue libre lo confirmamos; si no, queda para revisar.
           const s = st.services.find((y) => y.id === x.service_id);
@@ -687,7 +699,7 @@ export async function tick(st, env) {
 
 // ── Comisiones ───────────────────────────────────────────
 const payOf = (p) => ({ type: 'comision', percent: 0, base: 0, ...(p?.pay || {}) });
-/** Porcentaje que cobra la profesional por un turno: el que tenía al realizarse, o el actual si todavía no se hizo. */
+/** Porcentaje que cobra la asesora por un turno: el que tenía al realizarse, o el actual si todavía no se hizo. */
 const percentOf = (st, b) => (b.commission_percent ?? payOf(st.staff.find((u) => u.id === b.pro_id)).percent) || 0;
 export const commissionOf = (st, b) => (b.pro_id ? Math.round((Number(b.price) || 0) * percentOf(st, b) / 100) : 0);
 /** Marca un turno como realizado y deja fija la comisión de ese momento. */
@@ -695,10 +707,10 @@ function complete(st, b) {
   b.status = 'completed';
   if (b.pro_id && b.commission_percent == null) b.commission_percent = payOf(st.staff.find((u) => u.id === b.pro_id)).percent || 0;
 }
-/** Liquidación de una profesional en un mes ('AAAA-MM'): lo realizado, lo que viene y el total a cobrar. */
+/** Liquidación de una asesora en un mes ('AAAA-MM'): lo realizado, lo que viene y el total a cobrar. */
 export function commissionReport(st, env, proId, month) {
   const p = st.staff.find((u) => u.id === proId && u.role === 'pro');
-  if (!p) fail(404, 'No encontramos a esa profesional.');
+  if (!p) fail(404, 'No encontramos a esa asesora.');
   const m = /^\d{4}-\d{2}$/.test(month || '') ? month : dayKey(localNow(env)).slice(0, 7);
   const pay = payOf(p);
   const rows = st.bookings.filter((b) => b.pro_id === p.id && b.start.slice(0, 7) === m && b.status !== 'expired').sort((a, b) => a.start.localeCompare(b.start))
@@ -724,8 +736,8 @@ function audit(st, env, staff, action, ref = {}) {
 const auditView = (a) => ({ ...a, role_label: ROLES[a.role] || '' });
 
 // ── Panel: helpers ───────────────────────────────────────
-const needAdmin = (staff) => { if (staff?.role !== 'admin') fail(403, 'Esta sección es solo para administración.'); };
-const staffView = (u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, role_label: ROLES[u.role], created_at: u.created_at });
+const needAdmin = (staff) => { if (!isAdminRole(staff)) fail(403, 'Esta sección es solo para administración.'); };
+const staffView = (u) => ({ id: u.id, email: u.email, name: u.name, role: u.role, role_label: ROLES[u.role], created_at: u.created_at, has_password: !!u.password_hash });
 const PRO_FIELDS = ['phone', 'dni', 'cuit', 'birthday', 'address', 'alias', 'specialty', 'notes'];
 const proView = (st, u) => ({ id: u.id, name: u.name, email: u.email || '', role: u.role, active: u.active !== false, has_access: !!u.password_hash, created_at: u.created_at,
   ...Object.fromEntries(PRO_FIELDS.map((k) => [k, u[k] || ''])), services: u.services || [], pay: { ...payOf(u), label: PAY_TYPES[payOf(u).type] },
@@ -733,7 +745,7 @@ const proView = (st, u) => ({ id: u.id, name: u.name, email: u.email || '', role
 async function proInput(st, env, body, prev = null) {
   const u = prev ? { ...prev } : { role: 'pro', active: true, services: [], pay: { type: 'comision', percent: 40, base: 0 } };
   if (body.name !== undefined) u.name = clean(body.name, 80);
-  if (!u.name || u.name.length < 2) fail(422, 'Escribí el nombre de la profesional.');
+  if (!u.name || u.name.length < 2) fail(422, 'Escribí el nombre de la asesora.');
   for (const k of PRO_FIELDS) if (body[k] !== undefined) u[k] = clean(body[k], k === 'notes' ? 1000 : 160);
   if (body.email !== undefined) {
     const email = String(body.email || '').toLowerCase().trim();
@@ -777,8 +789,8 @@ function serviceInput(st, body, prev = {}) {
   return s;
 }
 const adminBooking = (b) => ({ ...b, status_label: BOOKING_STATUS[b.status], pay_method_label: PAY_METHODS[b.pay_method] || '' });
-const adminBookingFull = (st, b) => ({ ...adminBooking(b), commission: commissionOf(st, b), commission_percent_now: percentOf(st, b) });
-/** Lo que ve una profesional de un turno suyo: sin email ni datos de pago de la clienta. */
+const adminBookingFull = (st, b) => ({ ...adminBooking(b), commission: commissionOf(st, b), commission_percent_now: percentOf(st, b), collected: (st.cash?.moves || []).filter((m) => m.booking_id === b.id && m.type === 'in').reduce((a, m) => a + m.amount, 0) });
+/** Lo que ve una asesora de un turno suyo: sin email ni datos de pago de la clienta. */
 const proBooking = (st, b) => ({ id: b.id, code: b.code, start: b.start, duration: b.duration, service_name: b.service_name, resource: b.resource, status: b.status, status_label: BOOKING_STATUS[b.status],
   name: b.name, phone: b.phone, notes: b.notes, price: b.price, commission: commissionOf(st, b), percent: percentOf(st, b), history: b.history, pro_id: b.pro_id, pro_name: b.pro_name });
 
@@ -824,15 +836,22 @@ function clientRows(st, env) {
     c.services[b.service_name] = (c.services[b.service_name] || 0) + 1;
     map.set(k, c);
   }
+  // Clientas cargadas a mano o con cuenta en la web, aunque todavía no tengan turnos.
+  const blank = (k, m) => ({ key: k, email: m.email || '', name: m.name || '', phone: m.phone || '', visits: 0, upcoming: 0, cancelled: 0, noShows: 0, spent: 0, services: {}, first: '', last: '', lastService: '', next: '', nextService: '', bookings: 0 });
+  for (const [k, m] of Object.entries(st.crm)) if (m.manual && !map.has(k)) map.set(k, blank(k, m));
+  for (const cu of st.customers) { const k = String(cu.email || '').toLowerCase(); if (k && !map.has(k)) map.set(k, blank(k, cu)); }
   return [...map.values()].map((c) => {
     const crm = st.crm[c.key] || {};
-    const acc = st.customers.find((x) => x.email === c.email);
-    return { ...c, top: Object.entries(c.services).sort((a, b) => b[1] - a[1])[0]?.[0] || '', account: !!acc, tags: crm.tags || [], birthday: crm.birthday || '', hasNotes: !!crm.notes };
+    const acc = st.customers.find((x) => x.email === (crm.email || c.email));
+    // Lo que se edita en la ficha (o carga la clienta en su cuenta) manda sobre lo que vino en los turnos.
+    return { ...c, name: crm.name || c.name || acc?.name || '', phone: crm.phone || c.phone || acc?.phone || '', email: crm.email || c.email,
+      top: Object.entries(c.services).sort((a, b) => b[1] - a[1])[0]?.[0] || '', account: !!acc, tags: crm.tags || [],
+      birthday: crm.birthday || acc?.birthday || '', address: crm.address || acc?.address || '', photos: (crm.photos || []).length, hasNotes: !!crm.notes, manual: !!crm.manual };
   });
 }
 function clients(st, env, q = {}) {
   let list = clientRows(st, env);
-  if (q.q) { const t = String(q.q).toLowerCase(); list = list.filter((c) => (c.name + ' ' + c.email + ' ' + c.phone + ' ' + c.tags.join(' ')).toLowerCase().includes(t)); }
+  if (q.q) { const t = String(q.q).toLowerCase(); list = list.filter((c) => (c.name + ' ' + c.email + ' ' + c.phone + ' ' + c.address + ' ' + c.tags.join(' ')).toLowerCase().includes(t)); }
   if (q.tag) list = list.filter((c) => c.tags.includes(q.tag));
   const nowKey = msToLocal(env.now()).slice(0, 10);
   if (q.segment === 'inactive') list = list.filter((c) => c.last && !c.next && c.last.slice(0, 10) < addDays(nowKey, -60));
@@ -857,7 +876,7 @@ function clientDetail(st, env, key) {
   const crm = st.crm[k] || {};
   return {
     client: { ...row, account_since: acc?.created_at || '', avgTicket: row.visits ? Math.round(row.spent / row.visits) : 0, everyDays: gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0 },
-    crm: { notes: crm.notes || '', preferences: crm.preferences || '', birthday: crm.birthday || '', tags: crm.tags || [], updated_at: crm.updated_at || '', updated_by: crm.updated_by || '' },
+    crm: { notes: crm.notes || '', preferences: crm.preferences || '', birthday: row.birthday, address: row.address, name: row.name, phone: row.phone, email: row.email, tags: crm.tags || [], photos: crm.photos || [], updated_at: crm.updated_at || '', updated_by: crm.updated_by || '' },
     services: Object.entries(row.services).sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n })),
     bookings: list.map(adminBooking),
     giftcards: gifts.map((g) => ({ id: g.id, code: g.code, amount: g.amount, balance: g.balance, status: g.status, status_label: GIFT_STATUS[g.status], service_name: g.service_name, role: g.to_email === row.email ? 'Recibida' : 'Comprada', created_at: g.created_at })),
@@ -869,14 +888,154 @@ function saveClient(st, env, key, body, staff) {
   if (!clientRows(st, env).some((c) => c.key === k)) fail(404, 'No encontramos esa clienta.');
   const cur = st.crm[k] || {};
   const bd = String(body.birthday || '').slice(0, 10);
-  st.crm[k] = {
-    notes: body.notes !== undefined ? clean(body.notes, 2000) : cur.notes || '',
-    preferences: body.preferences !== undefined ? clean(body.preferences, 500) : cur.preferences || '',
-    birthday: body.birthday !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(bd) ? bd : '') : cur.birthday || '',
-    tags: Array.isArray(body.tags) ? [...new Set(body.tags.map((t) => clean(t, 30)).filter(Boolean))].slice(0, 12) : cur.tags || [],
-    updated_at: iso(env), updated_by: staff?.name || staff?.email || '',
-  };
+  const u = { ...cur };
+  if (body.name !== undefined) { if (clean(body.name).length < 3) fail(422, 'Escribí el nombre y apellido.'); u.name = clean(body.name, 80); }
+  if (body.phone !== undefined) { if (body.phone && digits(body.phone).length < 8) fail(422, 'Revisá el celular.'); u.phone = clean(body.phone, 40); }
+  if (body.email !== undefined) { if (body.email && !isEmail(body.email)) fail(422, 'Revisá el correo.'); u.email = clean(body.email, 120).toLowerCase(); }
+  if (body.address !== undefined) u.address = clean(body.address, 160);
+  if (body.notes !== undefined) u.notes = clean(body.notes, 2000);
+  if (body.preferences !== undefined) u.preferences = clean(body.preferences, 500);
+  if (body.birthday !== undefined) u.birthday = /^\d{4}-\d{2}-\d{2}$/.test(bd) ? bd : '';
+  if (Array.isArray(body.tags)) u.tags = [...new Set(body.tags.map((t) => clean(t, 30)).filter(Boolean))].slice(0, 12);
+  st.crm[k] = { notes: '', preferences: '', birthday: '', tags: [], ...u, updated_at: iso(env), updated_by: staff?.name || staff?.email || '' };
   return clientDetail(st, env, k);
+}
+/** Alta de una clienta desde el panel (por ejemplo, alguien que reservó por teléfono o vino sin turno). */
+function createClient(st, env, body, staff) {
+  const email = clean(body.email, 120).toLowerCase(), phone = clean(body.phone, 40);
+  const e = { name: clean(body.name).length < 3 ? 'Escribí el nombre y apellido.' : '', email: email && !isEmail(email) ? 'Revisá el correo.' : '', phone: !email && digits(phone).length < 8 ? 'Dejá un celular o un correo.' : '' };
+  errs(e);
+  const k = email || 'tel:' + digits(phone);
+  if (clientRows(st, env).some((c) => c.key === k)) fail(409, 'Ya hay una clienta con ese correo o celular.', { key: k });
+  st.crm[k] = { manual: true, name: clean(body.name, 80), phone, email, address: clean(body.address, 160), birthday: /^\d{4}-\d{2}-\d{2}$/.test(String(body.birthday || '')) ? body.birthday : '', notes: '', preferences: '', tags: [], photos: [], created_at: iso(env), updated_at: iso(env), updated_by: staff?.name || staff?.email || '' };
+  return clientDetail(st, env, k);
+}
+export const MAX_CLIENT_PHOTOS = 60;
+/** Fotos de antes y después de una clienta (la de antes es opcional). */
+async function addClientPhoto(st, env, body, staff) {
+  const k = String(body.key || '').toLowerCase();
+  if (!clientRows(st, env).some((c) => c.key === k)) fail(404, 'No encontramos esa clienta.');
+  if (!env.saveImage) fail(501, 'Este servidor no puede guardar fotos.');
+  const m = st.crm[k] = { notes: '', preferences: '', birthday: '', tags: [], ...(st.crm[k] || {}) };
+  m.photos = m.photos || [];
+  if (m.photos.length >= MAX_CLIENT_PHOTOS) fail(422, `Llegaste al máximo de ${MAX_CLIENT_PHOTOS} fotos para esta clienta. Borrá alguna vieja.`);
+  const p = { id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), after: await env.saveImage(body.after, 'clienta'), before: body.before ? await env.saveImage(body.before, 'clienta-antes') : '',
+    note: clean(body.note, 160), date: isDate(body.date) ? body.date : dayKey(localNow(env)), by: staff?.name || staff?.email || '', at: iso(env) };
+  m.photos.unshift(p);
+  return clientDetail(st, env, k);
+}
+async function removeClientPhoto(st, env, body) {
+  const k = String(body.key || '').toLowerCase(), m = st.crm[k];
+  const i = (m?.photos || []).findIndex((p) => p.id === body.id);
+  if (i < 0) fail(404, 'No encontramos esa foto.');
+  const [p] = m.photos.splice(i, 1);
+  for (const f of [p.after, p.before]) if (f) await env.deleteImage?.(f);
+  return clientDetail(st, env, k);
+}
+
+// ── Caja y facturación ───────────────────────────────────
+// Facturación del día: señas cobradas online, gift cards vendidas en la web, cobros en la casa e ingresos/egresos cargados a mano.
+// Caja: el efectivo del local (lo que quedó del cierre anterior + lo que entra − lo que sale) y su cierre.
+export const CASH_METHODS = { efectivo: 'Efectivo', transferencia: 'Transferencia', mercadopago: 'Mercado Pago', debito: 'Débito', credito: 'Crédito' };
+const cashOf = (st) => (st.cash = st.cash || { moves: [], closings: [] });
+const closingOf = (st, date) => cashOf(st).closings.find((c) => c.date === date && !c.reopened_at);
+const localDay = (isoStr) => (isoStr ? msToLocal(Date.parse(isoStr)).slice(0, 10) : '');
+function openingFor(st, date) {
+  const prev = cashOf(st).closings.filter((c) => c.date < date && !c.reopened_at).sort((a, b) => b.date.localeCompare(a.date))[0];
+  return prev ? prev.leaves : 0;
+}
+/** Lo que entró solo (sin pasar por la caja del local): señas y gift cards pagadas online ese día. */
+function onlineIncome(st, date) {
+  const out = [];
+  for (const b of st.bookings) {
+    if (!b.deposit_paid || !['mp', 'transfer'].includes(b.pay_method)) continue;
+    if (localDay(b.deposit_at || b.created_at) !== date) continue;
+    out.push({ id: 'b' + b.id, type: 'in', auto: true, at: b.deposit_at || b.created_at, amount: b.deposit_paid, method: b.pay_method === 'mp' ? 'mercadopago' : 'transferencia', concept: `Seña ${b.code} · ${b.service_name} · ${b.name}`, booking_id: b.id });
+  }
+  for (const g of st.giftcards) {
+    if (!g.paid_at || !g.payment_id || localDay(g.paid_at) !== date) continue;
+    out.push({ id: 'g' + g.id, type: 'in', auto: true, at: g.paid_at, amount: g.amount, method: 'mercadopago', concept: `Gift card ${g.code} · ${g.buyer_name}` });
+  }
+  return out;
+}
+const restOf = (b) => Math.max(0, (Number(b.price) || 0) - (b.deposit_paid || 0) - (b.gift_applied || 0));
+const collectedOf = (st, b) => cashOf(st).moves.filter((m) => m.booking_id === b.id && m.type === 'in').reduce((a, m) => a + m.amount, 0);
+export function cashDay(st, env, date) {
+  const moves = cashOf(st).moves.filter((m) => m.date === date).sort((a, b) => a.at.localeCompare(b.at));
+  const all = [...onlineIncome(st, date), ...moves].sort((a, b) => a.at.localeCompare(b.at));
+  const byMethod = Object.fromEntries(Object.keys(CASH_METHODS).map((k) => [k, { in: 0, out: 0 }]));
+  let income = 0, expenses = 0;
+  for (const m of all) { (byMethod[m.method] ||= { in: 0, out: 0 })[m.type] += m.amount; if (m.type === 'in') income += m.amount; else expenses += m.amount; }
+  const opening = openingFor(st, date);
+  const cashIn = byMethod.efectivo.in, cashOut = byMethod.efectivo.out;
+  // Turnos del día con saldo por cobrar en la casa.
+  const pending = st.bookings.filter((b) => b.start.startsWith(date) && ['confirmed', 'completed', 'attention'].includes(b.status) && restOf(b) > collectedOf(st, b))
+    .sort((a, b) => a.start.localeCompare(b.start)).map((b) => ({ id: b.id, code: b.code, time: b.start.slice(11), name: b.name, service_name: b.service_name, pro_name: b.pro_name || '', status: b.status, rest: restOf(b) - collectedOf(st, b) }));
+  const c = closingOf(st, date);
+  return { date, methods: CASH_METHODS, moves: all.map((m) => ({ ...m, method_label: CASH_METHODS[m.method] || m.method })), byMethod, income, expenses, net: income - expenses,
+    cash: { opening, in: cashIn, out: cashOut, expected: opening + cashIn - cashOut }, pending, closing: c || null,
+    history: cashOf(st).closings.filter((x) => !x.reopened_at).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10) };
+}
+/** Facturación de los últimos días (para la tabla de la caja). */
+function billing(st, env, until, days = 14) {
+  const out = [];
+  for (let i = 0; i < days; i++) { const d = addDays(until, -i); const r = cashDay(st, env, d); out.push({ date: d, income: r.income, expenses: r.expenses, net: r.net, closed: !!r.closing, byMethod: Object.fromEntries(Object.entries(r.byMethod).map(([k, v]) => [k, v.in - v.out])) }); }
+  return out;
+}
+async function cashRoute(st, env, method, A, q, body, staff) {
+  const who = staff.name || staff.email;
+  const today = dayKey(localNow(env));
+  if (method === 'GET' && !A[1]) { const date = isDate(q.date) ? q.date : today; return { ...cashDay(st, env, date), billing: billing(st, env, date), today }; }
+  if (method === 'POST' && A[1] === 'moves') {
+    const date = isDate(body.date) ? body.date : today;
+    if (closingOf(st, date)) fail(409, 'La caja de ese día ya está cerrada. Si hace falta, pedile a administración que la reabra.');
+    const amount = Math.round(Number(body.amount) || 0);
+    if (!(amount > 0)) fail(422, 'Escribí el monto.');
+    if (!CASH_METHODS[body.method]) fail(422, 'Elegí el medio de pago.');
+    const type = body.type === 'out' ? 'out' : 'in';
+    const b = body.booking_id ? st.bookings.find((x) => x.id === Number(body.booking_id)) : null;
+    if (body.booking_id && !b) fail(404, 'No encontramos ese turno.');
+    const concept = clean(body.concept, 160) || (b ? `Saldo ${b.code} · ${b.service_name} · ${b.name}` : '');
+    if (!concept) fail(422, 'Escribí el concepto (por ejemplo: insumos, retiro, venta de productos).');
+    const m = { id: ++st.ids.cash, date, at: iso(env), type, method: body.method, amount, concept, booking_id: b?.id || null, by: who };
+    cashOf(st).moves.push(m);
+    if (b) b.history.push({ at: iso(env), text: `Cobrado en la casa: ${fmtMoney(amount)} (${CASH_METHODS[m.method]}) por ${who}` });
+    audit(st, env, staff, `Caja ${date}: ${type === 'in' ? 'ingreso' : 'egreso'} de ${fmtMoney(amount)} (${CASH_METHODS[m.method]}) · ${concept}`);
+    return cashDay(st, env, date);
+  }
+  if (method === 'DELETE' && A[1] === 'moves' && A[2]) {
+    const i = cashOf(st).moves.findIndex((m) => m.id === Number(A[2]));
+    if (i < 0) fail(404, 'No encontramos ese movimiento.');
+    const m = cashOf(st).moves[i];
+    if (closingOf(st, m.date)) fail(409, 'La caja de ese día ya está cerrada.');
+    if (!isAdminRole(staff) && m.by !== who) fail(403, 'Solo administración puede borrar movimientos de otra persona.');
+    cashOf(st).moves.splice(i, 1);
+    audit(st, env, staff, `Caja ${m.date}: borró ${m.type === 'in' ? 'el ingreso' : 'el egreso'} de ${fmtMoney(m.amount)} · ${m.concept}`);
+    return cashDay(st, env, m.date);
+  }
+  if (method === 'POST' && A[1] === 'close') {
+    const date = isDate(body.date) ? body.date : today;
+    if (closingOf(st, date)) fail(409, 'La caja de ese día ya está cerrada.');
+    if (date > today) fail(422, 'No se puede cerrar una caja de un día que todavía no llegó.');
+    const d = cashDay(st, env, date);
+    const counted = Math.max(0, Math.round(Number(body.counted) || 0)), withdrawn = Math.max(0, Math.round(Number(body.withdrawn) || 0));
+    if (body.counted === '' || body.counted === undefined || body.counted === null) fail(422, 'Contá el efectivo de la caja y escribí el total.');
+    if (withdrawn > counted) fail(422, 'No se puede retirar más de lo que hay en la caja.');
+    const c = { id: ++st.ids.cash, date, at: iso(env), by: who, opening: d.cash.opening, cash_in: d.cash.in, cash_out: d.cash.out, expected: d.cash.expected, counted, diff: counted - d.cash.expected, withdrawn, leaves: counted - withdrawn,
+      income: d.income, expenses: d.expenses, net: d.net, byMethod: Object.fromEntries(Object.entries(d.byMethod).map(([k, v]) => [k, v.in - v.out])), notes: clean(body.notes, 500) };
+    cashOf(st).closings.push(c);
+    audit(st, env, staff, `Cerró la caja del ${date}: esperado ${fmtMoney(c.expected)}, contado ${fmtMoney(counted)}${c.diff ? ` (diferencia ${c.diff > 0 ? '+' : '−'}${fmtMoney(Math.abs(c.diff))})` : ''}, retiró ${fmtMoney(withdrawn)}`);
+    return cashDay(st, env, date);
+  }
+  if (method === 'POST' && A[1] === 'reopen') {
+    needAdmin(staff);
+    const c = closingOf(st, String(body.date || ''));
+    if (!c) fail(404, 'Esa caja no está cerrada.');
+    c.reopened_at = iso(env); c.reopened_by = who;
+    audit(st, env, staff, `Reabrió la caja del ${c.date}`);
+    return cashDay(st, env, c.date);
+  }
+  fail(404, 'No existe esa ruta.');
 }
 
 // ── Router ───────────────────────────────────────────────
@@ -986,7 +1145,7 @@ export async function handle(st, env, req) {
   const staff = req.staff;
   if (!staff || staff.active === false || (staff.role === 'pro' && !staff.password_hash)) fail(401, 'Tu sesión venció. Volvé a entrar.');
   if (method === 'GET' && A[0] === 'me') return ok({ me: staffView(staff) });
-  // Las profesionales solo ven sus turnos, sus servicios y sus comisiones.
+  // Las asesoras solo ven sus turnos, sus servicios y sus comisiones.
   if (staff.role === 'pro') return ok(await proRoute(st, env, method, A, q, body, staff));
   const who = staff.name || staff.email;
   if (method === 'GET' && A[0] === 'dashboard') return ok(dashboard(st, env));
@@ -1018,14 +1177,14 @@ export async function handle(st, env, req) {
       if (clean(body.name).length < 2) fail(422, 'Escribí el nombre.');
       if (!isDate(body.date) || !isTime(body.time)) fail(422, 'Elegí el día y la hora.');
       const wantPro = Number(body.pro_id) || null;
-      if (wantPro && !prosAll(st).some((p) => p.id === wantPro)) fail(422, 'Elegí una profesional.');
-      if (!body.force && !slotsFor(st, env, s, body.date, { staff: true, pro: wantPro }).includes(body.time)) fail(409, 'Ese horario está ocupado (o la profesional no está libre) o queda fuera del horario de atención. Si igual querés cargarlo, marcá "Cargar igual".', { taken: true });
+      if (wantPro && !prosAll(st).some((p) => p.id === wantPro)) fail(422, 'Elegí una asesora.');
+      if (!body.force && !slotsFor(st, env, s, body.date, { staff: true, pro: wantPro }).includes(body.time)) fail(409, 'Ese horario está ocupado (o la asesora no está libre) o queda fuera del horario de atención. Si igual querés cargarlo, marcá "Cargar igual".', { taken: true });
       const pro = wantPro ? st.staff.find((p) => p.id === wantPro) : pickPro(st, env, s, body.date, body.time);
       const dep = Math.max(0, Number(body.deposit_paid) || 0);
       const b = {
         id: ++st.ids.booking, code: `T-${++st.ids.bookingNumber}`, token: token(), group: null, service_id: s.id, service_name: svcLabel(s), resource: s.resource,
         pro_id: pro?.id || null, pro_name: pro?.name || '',
-        start: `${body.date} ${body.time}`, duration: Number(body.duration) || Number(s.duration) || 60, price: Number(s.price) || 0, deposit: 0, deposit_due: 0, deposit_paid: dep, gift_id: null, gift_code: '', gift_applied: 0,
+        start: `${body.date} ${body.time}`, duration: Number(body.duration) || Number(s.duration) || 60, price: Number(s.price) || 0, deposit: 0, deposit_due: 0, deposit_paid: dep, deposit_at: dep ? iso(env) : null, gift_id: null, gift_code: '', gift_applied: 0,
         name: clean(body.name, 80), email: clean(body.email, 120).toLowerCase(), phone: clean(body.phone, 40), notes: clean(body.notes, 500), status: 'confirmed', source: 'panel', created_at: iso(env),
         pay_method: dep ? (PAY_METHODS[body.pay_method] ? body.pay_method : 'local') : 'none',
         hold_until: iso(env), reminded: false, refund_pending: false, pay_url: null, payment_id: null, history: [{ at: iso(env), text: `Cargado en el panel por ${who}` }],
@@ -1057,19 +1216,19 @@ export async function handle(st, env, req) {
       if (body.pro_id !== undefined && (Number(body.pro_id) || null) !== b.pro_id) {
         const pid = Number(body.pro_id) || null;
         const p = pid ? prosAll(st).find((x) => x.id === pid) : null;
-        if (pid && !p) fail(422, 'Elegí una profesional.');
+        if (pid && !p) fail(422, 'Elegí una asesora.');
         if (p && !body.force && !proFree(st, env.now(), p.id, b.start.slice(0, 10), toMin(b.start.slice(11)), b.duration, b.id)) fail(409, `${p.name} ya tiene otro turno a esa hora. Si igual querés asignárselo, marcá "Cargar igual".`, { taken: true });
         const before = b.pro_name || 'nadie';
         b.pro_id = p?.id || null; b.pro_name = p?.name || '';
         if (b.status !== 'completed') b.commission_percent = null;
-        b.history.push({ at: iso(env), text: `Profesional: ${before} → ${b.pro_name || 'nadie'} (${who})` });
-        changes.push(`profesional ${before} → ${b.pro_name || 'nadie'}`);
+        b.history.push({ at: iso(env), text: `Asesora: ${before} → ${b.pro_name || 'nadie'} (${who})` });
+        changes.push(`asesora ${before} → ${b.pro_name || 'nadie'}`);
         if (p && b.status === 'confirmed') await mailPros(st, env, 'pro_booking', [b]);
       }
       if (body.date || body.time) {
         const s = st.services.find((x) => x.id === b.service_id) || { ...b, days: [] };
         const date = body.date || b.start.slice(0, 10), time = body.time || b.start.slice(11);
-        if (!body.force && !slotsFor(st, env, { ...s, duration: b.duration, resource: b.resource }, date, { ignoreId: b.id, staff: true, pro: b.pro_id }).includes(time)) fail(409, 'Ese horario está ocupado (o la profesional no está libre) o queda fuera del horario de atención.', { taken: true });
+        if (!body.force && !slotsFor(st, env, { ...s, duration: b.duration, resource: b.resource }, date, { ignoreId: b.id, staff: true, pro: b.pro_id }).includes(time)) fail(409, 'Ese horario está ocupado (o la asesora no está libre) o queda fuera del horario de atención.', { taken: true });
         b.history.push({ at: iso(env), text: `Reprogramado de ${b.start} a ${date} ${time} por ${who}` });
         changes.push(`horario ${b.start} → ${date} ${time}`);
         b.start = `${date} ${time}`; b.reminded = false;
@@ -1092,6 +1251,10 @@ export async function handle(st, env, req) {
   }
   if (A[0] === 'clients' && method === 'GET' && !A[1]) return ok(clients(st, env, q));
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'GET') return ok(clientDetail(st, env, q.key));
+  if (A[0] === 'cash') return ok(await cashRoute(st, env, method, A, q, body, staff));
+  if (A[0] === 'clients' && method === 'POST' && !A[1]) { const r = createClient(st, env, body, staff); audit(st, env, staff, `Cargó a la clienta ${r.client.name}`); return ok(r); }
+  if (A[0] === 'clients' && A[1] === 'photos' && method === 'POST') { const r = await addClientPhoto(st, env, body, staff); audit(st, env, staff, `Sumó fotos de antes y después a ${r.client.name}`); return ok(r); }
+  if (A[0] === 'clients' && A[1] === 'photos' && method === 'DELETE') { const r = await removeClientPhoto(st, env, body); audit(st, env, staff, `Borró una foto de ${r.client.name}`); return ok(r); }
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'PATCH') { const r = saveClient(st, env, body.key, body, staff); audit(st, env, staff, `Editó la ficha de ${r.client.name}`); return ok(r); }
 
 
@@ -1313,14 +1476,18 @@ export async function handle(st, env, req) {
   }
   if (A[0] === 'users') {
     needAdmin(staff);
-    if (method === 'GET') return ok({ users: st.staff.filter((u) => u.role !== 'pro').map(staffView), roles: { admin: ROLES.admin, staff: ROLES.staff } });
+    // Se pueden crear usuarios con cualquiera de los roles; solo un web master crea (o quita) otro web master.
+    const creatable = { ...(staff.role === 'webmaster' ? { webmaster: ROLES.webmaster } : {}), admin: ROLES.admin, staff: ROLES.staff, pro: ROLES.pro };
+    if (method === 'GET') return ok({ users: st.staff.filter((u) => u.role !== 'pro' || u.password_hash).map(staffView), roles: creatable });
     if (method === 'POST') {
       const email = String(body.email || '').toLowerCase().trim();
       if (!isEmail(email)) fail(422, 'Revisá el email.');
       if (String(body.password || '').length < 10) fail(422, 'La contraseña necesita al menos 10 caracteres.');
-      if (!['admin', 'staff'].includes(body.role)) fail(422, 'Elegí un rol. Las profesionales se cargan en la sección Profesionales.');
+      if (!creatable[body.role]) fail(422, body.role === 'webmaster' ? 'Solo un web master puede crear otro web master.' : 'Elegí un rol.');
       if (st.staff.some((u) => u.email === email)) fail(409, 'Ya hay un usuario con ese email.');
       const u = { id: ++st.ids.staff, email, name: clean(body.name, 80), role: body.role, password_hash: await env.hashPassword(String(body.password)), created_at: iso(env) };
+      // Una asesora nueva atiende turnos: se le asignan los servicios y la comisión en Asesoras de belleza.
+      if (u.role === 'pro') Object.assign(u, { active: true, specialty: clean(body.specialty, 80), services: [], pay: { type: 'comision', percent: 0, base: 0 } });
       st.staff.push(u);
       audit(st, env, staff, `Creó el usuario ${u.email} (${ROLES[u.role]})`);
       return ok({ user: staffView(u) });
@@ -1329,15 +1496,16 @@ export async function handle(st, env, req) {
       const i = st.staff.findIndex((u) => u.id === Number(A[1]));
       if (i < 0) fail(404, 'No encontrado.');
       if (st.staff[i].id === staff.id) fail(409, 'No podés borrar tu propio usuario.');
-      if (st.staff[i].role === 'admin' && st.staff.filter((u) => u.role === 'admin').length === 1) fail(409, 'Tiene que quedar al menos un usuario de administración.');
-      if (st.staff[i].role === 'pro') fail(409, 'A las profesionales se las da de baja desde Profesionales.');
+      if (st.staff[i].role === 'webmaster' && staff.role !== 'webmaster') fail(403, 'Solo un web master puede quitar a otro web master.');
+      if (isAdminRole(st.staff[i]) && st.staff.filter((u) => isAdminRole(u) && u.password_hash).length === 1 && st.staff[i].password_hash) fail(409, 'Tiene que quedar al menos un usuario de administración.');
+      if (st.staff[i].role === 'pro') fail(409, 'A las asesoras se las da de baja desde Asesoras.');
       const [gone] = st.staff.splice(i, 1);
       audit(st, env, staff, `Quitó el acceso de ${gone.email}`);
       return ok({ ok: true });
     }
   }
 
-  // Profesionales: ficha, servicios que hace, forma de pago y liquidación de comisiones (solo administración).
+  // Asesoras: ficha, servicios que hace, forma de pago y liquidación de comisiones (solo administración).
   if (A[0] === 'pros') {
     needAdmin(staff);
     const month = /^\d{4}-\d{2}$/.test(q.month || '') ? q.month : dayKey(localNow(env)).slice(0, 7);
@@ -1350,11 +1518,11 @@ export async function handle(st, env, req) {
       const u = await proInput(st, env, body);
       u.id = ++st.ids.staff; u.created_at = iso(env); u.role = 'pro';
       st.staff.push(u);
-      audit(st, env, staff, `Creó la profesional ${u.name} · ${PAY_TYPES[u.pay.type]} ${u.pay.percent}%${u.pay.base ? ` + básico ${fmtMoney(u.pay.base)}` : ''}${u.password_hash ? ' · con acceso al panel' : ''}`, { pro_id: u.id });
+      audit(st, env, staff, `Creó la asesora ${u.name} · ${PAY_TYPES[u.pay.type]} ${u.pay.percent}%${u.pay.base ? ` + básico ${fmtMoney(u.pay.base)}` : ''}${u.password_hash ? ' · con acceso al panel' : ''}`, { pro_id: u.id });
       return ok({ pro: proView(st, u) });
     }
     const i = st.staff.findIndex((u) => u.id === Number(A[1]) && u.role === 'pro');
-    if (i < 0) fail(404, 'No encontramos a esa profesional.');
+    if (i < 0) fail(404, 'No encontramos a esa asesora.');
     const p = st.staff[i];
     if (method === 'GET') return ok({ pro: proView(st, p), report: commissionReport(st, env, p.id, month), pay_types: PAY_TYPES,
       services: [...st.services].sort((a, b) => a.position - b.position).map((s) => ({ id: s.id, name: svcLabel(s), category: s.category, price: s.price, mode: s.mode })),
@@ -1378,7 +1546,7 @@ export async function handle(st, env, req) {
     if (method === 'DELETE') {
       if (st.bookings.some((b) => b.pro_id === p.id)) fail(409, 'Tiene turnos registrados: dala de baja en vez de borrarla, así queda su historial.');
       st.staff.splice(i, 1);
-      audit(st, env, staff, `Borró la profesional ${p.name}`);
+      audit(st, env, staff, `Borró la asesora ${p.name}`);
       return ok({ ok: true });
     }
   }
@@ -1395,11 +1563,19 @@ export async function handle(st, env, req) {
   fail(404, 'No existe esa ruta.');
 }
 
-// ── Panel de las profesionales ───────────────────────────
+// ── Panel de las asesoras ───────────────────────────
 // Ven solo sus turnos (sin email de la clienta), los servicios que hacen y sus comisiones. Pueden cancelar un turno suyo.
 async function proRoute(st, env, method, A, q, body, me) {
   const mine = (b) => b.pro_id === me.id;
   const who = me.name || me.email;
+  // Sus clientas: ve la ficha y suma fotos de antes y después; no edita los datos.
+  if (A[0] === 'clients') {
+    const keys = new Set(st.bookings.filter((b) => mine(b) && b.status !== 'expired').map(clientKey));
+    const own = (k) => { if (!keys.has(String(k || '').toLowerCase())) fail(404, 'No encontramos esa clienta.'); };
+    if (method === 'GET' && !A[1]) { const r = clients(st, env, q); const list = r.clients.filter((c) => keys.has(c.key)); return { ...r, clients: list, total: list.length, summary: { ...r.summary, total: list.length } }; }
+    if (method === 'GET' && A[1] === 'ficha') { own(q.key); return clientDetail(st, env, q.key); }
+    if (method === 'POST' && A[1] === 'photos') { own(body.key); const r = await addClientPhoto(st, env, body, me); audit(st, env, me, `Sumó fotos de antes y después a ${r.client.name}`); return r; }
+  }
   if (method === 'GET' && A[0] === 'dashboard') {
     const today = dayKey(localNow(env));
     const r = commissionReport(st, env, me.id, today.slice(0, 7));
@@ -1441,11 +1617,11 @@ async function proRoute(st, env, method, A, q, body, me) {
   }
   if (method === 'GET' && A[0] === 'commissions') return commissionReport(st, env, me.id, q.month);
   if (method === 'GET' && A[0] === 'audit') return { audit: st.audit.filter((a) => a.user_id === me.id).slice(-200).reverse().map(auditView) };
-  fail(403, 'Tu usuario de profesional no tiene acceso a esta sección.');
+  fail(403, 'Tu usuario de asesora no tiene acceso a esta sección.');
 }
 
 // ── Cuentas de clientas ──────────────────────────────────
-const customerView = (c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, created_at: c.created_at });
+const customerView = (c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, birthday: c.birthday || '', address: c.address || '', created_at: c.created_at });
 /** Turnos y gift cards de una clienta: los suyos y los que reservó con el mismo email sin cuenta. */
 function accountData(st, env, c) {
   // Una reserva con varios servicios se muestra una sola vez.
@@ -1525,6 +1701,10 @@ async function accountRoute(st, env, method, action, body, req) {
   if (method === 'PATCH' && action === 'me') {
     if (body.name !== undefined) { if (clean(body.name).length < 3) fail(422, 'Escribí tu nombre y apellido.'); c.name = clean(body.name, 80); }
     if (body.phone !== undefined) { if (digits(body.phone).length < 8) fail(422, 'Revisá el celular.'); c.phone = clean(body.phone, 40); }
+    if (body.birthday !== undefined) c.birthday = /^\d{4}-\d{2}-\d{2}$/.test(String(body.birthday)) ? body.birthday : '';
+    if (body.address !== undefined) c.address = clean(body.address, 160);
+    // Lo que carga la clienta también queda en su ficha del CRM.
+    if (body.birthday !== undefined || body.address !== undefined) { const k = c.email.toLowerCase(); st.crm[k] = { notes: '', preferences: '', tags: [], ...(st.crm[k] || {}), birthday: c.birthday || '', address: c.address || '', updated_at: iso(env), updated_by: 'la clienta' }; }
     if (body.password) {
       if (!(await env.checkPassword(String(body.current || ''), c.password_hash))) fail(422, 'La contraseña actual no es correcta.');
       if (String(body.password).length < 8) fail(422, 'La contraseña nueva necesita al menos 8 caracteres.');
