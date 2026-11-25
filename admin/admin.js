@@ -394,7 +394,7 @@ async function viewServices(editId = null) {
         <label class="fl"><span>Cómo se reserva</span><select id="eMode">${Object.entries(MODES).map(([k, l]) => `<option value="${k}" ${k === ed.mode ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="fl"><span>Dónde se hace</span><select id="eRes">${res.map((x) => `<option value="${x.key}" ${x.key === ed.resource ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><span class="help">Dos servicios del mismo espacio no se superponen.</span></label></div>
       <div class="row"><label class="fl"><span>Precio ($)</span><input id="ePrice" type="number" min="0" value="${ed.price ?? ''}" placeholder="Vacío = consultar"><span class="help">En efectivo. La seña se calcula sobre este precio.</span></label><label class="fl"><span>Precio con transferencia ($, opcional)</span><input id="ePriceT" type="number" min="0" value="${ed.price_transfer ?? ''}" placeholder="Vacío = el mismo"></label><label class="fl"><span>Duración (minutos)</span><input id="eDur" type="number" min="0" step="5" value="${ed.duration}"></label>
-        <label class="fl"><span>WhatsApp propio (opcional)</span><input id="eWa" value="${esc(ed.whatsapp)}" placeholder="Si lo atiende otra persona"></label></div>
+</div>
       <label class="fl"><span>Descripción corta</span><textarea id="eShort" rows="2">${esc(ed.short)}</textarea></label>
       ${ed.id ? worksEditor(ed, r) : '<p class="small muted">Guardá el servicio para poder sumarle trabajos de antes y después.</p>'}
       <label class="fl"><span>Qué incluye (uno por línea)</span><span class="help">Para sumar una explicación, escribí: Título — explicación. En el turnero se ve como en las placas.</span><textarea id="eInc" rows="6">${esc((ed.includes || []).join('\n'))}</textarea></label>
@@ -439,7 +439,7 @@ async function viewServices(editId = null) {
   });
   $('#eSave').onclick = async () => {
     const days = $$('[data-day]').filter((c) => c.checked).map((c) => Number(c.dataset.day));
-    const body = { name: $('#eName').value, tag: $('#eTag').value, category: $('#eCat').value, mode: $('#eMode').value, resource: $('#eRes').value, price: $('#ePrice').value, price_transfer: $('#ePriceT').value, duration: $('#eDur').value, whatsapp: $('#eWa').value, short: $('#eShort').value, includes: $('#eInc').value, image: $('#eImg').value, visible: $('#eVis').checked, days: days.length === 7 ? [] : days };
+    const body = { name: $('#eName').value, tag: $('#eTag').value, category: $('#eCat').value, mode: $('#eMode').value, resource: $('#eRes').value, price: $('#ePrice').value, price_transfer: $('#ePriceT').value, duration: $('#eDur').value, short: $('#eShort').value, includes: $('#eInc').value, image: $('#eImg').value, visible: $('#eVis').checked, days: days.length === 7 ? [] : days };
     try { await (ed.id ? api('/services/' + ed.id, { method: 'PATCH', body }) : api('/services', { method: 'POST', body })); toast('Servicio guardado'); viewServices(); } catch (e) { $('#eErr').textContent = e.message; }
   };
   $('#eDel')?.addEventListener('click', (e) => confirmInline(e.target, '¿Borrar el servicio?', async () => { try { await api('/services/' + ed.id, { method: 'DELETE' }); toast('Borrado'); viewServices(); } catch (err) { $('#eErr').textContent = err.message; } }, 'Borrar'));
@@ -538,7 +538,7 @@ async function viewEvents(editId = null) {
   const ed = editId === 'new' ? { title: '', date: todayKey(), from: '', to: '', price: '', description: '', active: true } : r.events.find((e) => e.id === editId);
   $('#view').innerHTML = `<div class="page-head"><div><h1>Eventos y talleres</h1><div class="sub">Los próximos se muestran en la web, en la sección Cafetería &amp; eventos. Se reservan por WhatsApp.</div></div><div class="actions"><button class="btn primary" id="evNew">Nuevo evento</button></div></div>
     ${ed ? `<div class="card form" style="margin-bottom:14px"><h2>${ed.id ? 'Editar' : 'Nuevo'} evento</h2>
-      <label class="fl"><span>Título</span><input id="vT" value="${esc(ed.title)}" placeholder="Tarot & merienda"></label>
+      <label class="fl"><span>Título</span><input id="vT" value="${esc(ed.title)}" placeholder="Taller de skincare"></label>
       <div class="row"><label class="fl"><span>Fecha</span><input type="date" id="vD" value="${ed.date}"></label><label class="fl"><span>Desde</span><input type="time" id="vF" value="${ed.from}"></label><label class="fl"><span>Hasta</span><input type="time" id="vU" value="${ed.to}"></label><label class="fl"><span>Valor ($)</span><input type="number" id="vP" value="${ed.price ?? ''}"></label></div>
       <label class="fl"><span>Descripción</span><textarea id="vDs" rows="3">${esc(ed.description)}</textarea></label>
       <label class="check"><input type="checkbox" id="vA" ${ed.active ? 'checked' : ''}> Publicado</label><p class="err" id="vErr"></p>
@@ -666,8 +666,7 @@ async function viewSettings() {
     <div class="grid g2">
       <div class="card form"><h2>La casa</h2>${inp('site.name', 'Nombre', s.name)}${inp('site.tagline', 'Frase', s.tagline)}${inp('site.announcement', 'Barra de anuncios', s.announcement)}
         <div class="row">${inp('site.address', 'Dirección', s.address)}${inp('site.city', 'Ciudad', s.city)}</div>
-        <div class="row">${inp('site.whatsapp', 'WhatsApp general y del local', s.whatsapp)}${inp('site.ritualsWhatsapp', 'WhatsApp de head spa y masajes', s.ritualsWhatsapp || '')}</div>
-        <div class="row">${inp('site.eventsWhatsapp', 'WhatsApp de eventos', s.eventsWhatsapp)}</div>
+        <div class="row">${inp('site.whatsapp', 'WhatsApp de la casa (el único de toda la web)', s.whatsapp)}</div>
         <div class="row">${inp('site.instagram', 'Instagram', s.instagram)}${inp('site.email', 'Email de contacto', s.email, 'type="email"')}</div>
         ${inp('site.storeUrl', 'Dirección de la tienda Samadhi Style (botón "Tienda")', s.storeUrl, 'type="url"')}</div>
       <div class="card form"><h2>Reservas</h2>
@@ -735,7 +734,7 @@ async function viewPros(editId = null) {
 /** Formulario de alta o edición: datos personales, acceso al panel, servicios y forma de pago. */
 function proForm(box, p, meta) {
   const v = p || { name: '', email: '', phone: '', dni: '', cuit: '', birthday: '', address: '', alias: '', specialty: '', notes: '', services: [], pay: { type: 'comision', percent: 40, base: 0 }, active: true, has_access: false };
-  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', terapias: 'Terapias', espacio: 'Alquiler de la terraza' };
+  const cats = { rituales: 'Head spa & masajes', manicuria: 'Manicuría', espacio: 'Alquiler de la terraza' };
   const byCat = {}; for (const s of meta.services) (byCat[s.category] = byCat[s.category] || []).push(s);
   const inp = (k, label, type = 'text', extra = '') => `<label class="fl"><span>${label}</span><input id="pf_${k}" type="${type}" value="${esc(v[k] || '')}" ${extra}></label>`;
   box.innerHTML = `<div class="card form" style="margin-bottom:14px" id="pfCard"><h2>${p ? `Editar a ${esc(p.name)}` : 'Nueva profesional'}</h2>
