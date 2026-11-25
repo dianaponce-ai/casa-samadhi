@@ -14,7 +14,7 @@ const env = {
   hashPassword: async (pw) => 'demo$' + pw,
   checkPassword: async (pw, h) => h === 'demo$' + pw,
   // En la demo las fotos quedan en el navegador (ya vienen achicadas desde el panel).
-  saveImage: async (dataUrl) => { if (!/^data:image\/(webp|jpeg|png);base64,/.test(String(dataUrl || ''))) throw new C.ApiError(422, 'Elegí una foto (JPG, PNG o WEBP).'); return dataUrl; },
+  saveImage: async (dataUrl, p, { pdf = false } = {}) => { if (!(pdf ? /^data:(image\/(webp|jpeg|png)|application\/pdf);base64,/ : /^data:image\/(webp|jpeg|png);base64,/).test(String(dataUrl || ''))) throw new C.ApiError(422, pdf ? 'Subí una foto o un PDF.' : 'Elegí una foto (JPG, PNG o WEBP).'); return dataUrl; },
 };
 
 function seedDemo() {
