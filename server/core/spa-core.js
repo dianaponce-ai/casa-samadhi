@@ -250,12 +250,74 @@ function proFree(st, nowMs, proId, date, startMin, dur, ignoreId = null) {
   return !st.bookings.some((b) => b.pro_id === proId && b.id !== ignoreId && b.start.startsWith(date) && blocking(b, nowMs)
     && startMin < toMin(b.start.slice(11)) + b.duration && toMin(b.start.slice(11)) < startMin + dur);
 }
+// ── Horario de cada asesora ──────────────────────────────
+// Cada asesora sigue el horario de la casa (schedule = null) o tiene el suyo: { 0..6: [{ from, to }] }.
+// Sus días libres son bloqueos con pro_id. La casa siempre es el límite: fuera del horario de la casa no hay turnos.
+const proWeek = (st, p) => (p.schedule ? p.schedule : st.settings.hours);
+function proWorks(st, p, date, startMin, dur) {
+  const wins = proWeek(st, p)[weekday(date)] || [];
+  if (!wins.some((w) => toMin(w.from) <= startMin && startMin + dur <= toMin(w.to))) return false;
+  return !st.blocks.some((k) => k.pro_id === p.id && k.date === date && (!k.from || (startMin < (k.to ? toMin(k.to) : 24 * 60) && toMin(k.from) < startMin + dur)));
+}
+/** Valida una semana de horarios: hasta 3 franjas por día, de HH:MM a HH:MM. */
+function weekInput(body) {
+  const out = {};
+  for (let d = 0; d <= 6; d++) {
+    const list = Array.isArray(body?.[d]) ? body[d] : [];
+    out[d] = list.filter((w) => w && w.from && w.to).slice(0, 3).map((w) => {
+      if (!isTime(w.from) || !isTime(w.to) || w.from >= w.to) fail(422, `Revisá el horario del ${DAY_NAMES[d]}.`);
+      return { from: w.from, to: w.to };
+    }).sort((a, b) => a.from.localeCompare(b.from));
+  }
+  return out;
+}
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+/** Lo que ve y edita cada asesora (y administración desde su ficha). */
+function scheduleView(st, env, p) {
+  const today = dayKey(localNow(env));
+  return { pro: { id: p.id, name: p.name }, follows: !p.schedule, week: proWeek(st, p), house: st.settings.hours,
+    timeoff: st.blocks.filter((k) => k.pro_id === p.id && k.date >= today).sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from)) };
+}
+/** Turnos que la asesora tiene en días u horarios en los que ya no va a estar. */
+function scheduleConflicts(st, env, p) {
+  const nowKey = msToLocal(env.now());
+  return st.bookings.filter((b) => b.pro_id === p.id && ACTIVE.includes(b.status) && b.start >= nowKey && !proWorks(st, p, b.start.slice(0, 10), toMin(b.start.slice(11)), b.duration))
+    .sort((a, b) => a.start.localeCompare(b.start)).map((b) => ({ id: b.id, code: b.code, start: b.start, name: b.name, service_name: b.service_name }));
+}
+async function scheduleRoute(st, env, method, sub, body, p, staff) {
+  const who = staff.name || staff.email, own = staff.id === p.id ? 'su' : `el de ${p.name}`;
+  if (method === 'GET' && !sub[0]) return { ...scheduleView(st, env, p), conflicts: scheduleConflicts(st, env, p) };
+  if (method === 'PUT' && !sub[0]) {
+    p.schedule = body.follows ? null : weekInput(body.week);
+    audit(st, env, staff, `Cambió ${own} horario: ${p.schedule ? Object.entries(p.schedule).filter(([, w]) => w.length).map(([d, w]) => `${DAY_NAMES[d].slice(0, 3)} ${w.map((x) => `${x.from}-${x.to}`).join(' y ')}`).join(' · ') || 'sin días' : 'igual que la casa'}`);
+    return { ...scheduleView(st, env, p), conflicts: scheduleConflicts(st, env, p) };
+  }
+  if (method === 'POST' && sub[0] === 'timeoff') {
+    if (!isDate(body.date)) fail(422, 'Elegí el día.');
+    const to = body.to_date && isDate(body.to_date) ? body.to_date : body.date;
+    if (to < body.date || addDays(body.date, 120) < to) fail(422, 'Revisá el rango de días (máximo 4 meses).');
+    if ((body.from && !isTime(body.from)) || (body.to && !isTime(body.to)) || (body.from && body.to && body.from >= body.to)) fail(422, 'Revisá el horario.');
+    if (body.date < dayKey(localNow(env))) fail(422, 'Elegí un día de hoy en adelante.');
+    for (let d = body.date; d <= to; d = addDays(d, 1)) st.blocks.push({ id: ++st.ids.block, date: d, from: body.from || '', to: body.to || '', resource: 'pro', pro_id: p.id, reason: clean(body.reason, 120) });
+    audit(st, env, staff, `${staff.id === p.id ? 'Marcó' : `Marcó para ${p.name}`} ${body.from ? `ausencia el ${body.date} de ${body.from} a ${body.to || 'cierre'}` : `día${to !== body.date ? 's' : ''} libre${to !== body.date ? 's' : ''} ${body.date}${to !== body.date ? ` a ${to}` : ''}`}${body.reason ? ` (${clean(body.reason, 120)})` : ''}`);
+    return { ...scheduleView(st, env, p), conflicts: scheduleConflicts(st, env, p) };
+  }
+  if (method === 'DELETE' && sub[0] === 'timeoff' && sub[1]) {
+    const ids = String(sub[1]).split(',').map(Number);
+    const gone = st.blocks.filter((k) => ids.includes(k.id) && k.pro_id === p.id);
+    if (!gone.length) fail(404, 'No encontramos ese día libre.');
+    st.blocks = st.blocks.filter((k) => !gone.includes(k));
+    audit(st, env, staff, `Quitó ${gone.length === 1 ? 'el día libre' : 'los días libres'} ${gone[0].date}${gone.length > 1 ? ` a ${gone.at(-1).date}` : ''}${staff.id === p.id ? '' : ` de ${p.name}`}`);
+    return { ...scheduleView(st, env, p), conflicts: scheduleConflicts(st, env, p) };
+  }
+  fail(404, 'No existe esa ruta.');
+}
 /** Elige quién atiende: la asesora pedida si está libre, o la que tenga menos turnos ese día. */
 function pickPro(st, env, service, date, time, { pro = null, ignoreId = null } = {}) {
   const pros = prosFor(st, service);
   if (!pros.length) return null;
   const nowMs = env.now(), t = toMin(time), dur = Math.max(5, Number(service.duration) || 60);
-  const free = pros.filter((p) => (!pro || p.id === Number(pro)) && proFree(st, nowMs, p.id, date, t, dur, ignoreId));
+  const free = pros.filter((p) => (!pro || p.id === Number(pro)) && proWorks(st, p, date, t, dur) && proFree(st, nowMs, p.id, date, t, dur, ignoreId));
   const load = (p) => st.bookings.filter((b) => b.pro_id === p.id && b.start.startsWith(date) && blocking(b, nowMs)).length;
   return free.sort((a, b) => load(a) - load(b))[0] || null;
 }
@@ -274,7 +336,7 @@ export function slotsFor(st, env, service, date, { ignoreId = null, staff = fals
   const cap = capacityOf(st, service.resource);
   const taken = st.bookings.filter((b) => b.id !== ignoreId && b.resource === service.resource && b.start.startsWith(date) && blocking(b, nowMs))
     .map((b) => [toMin(b.start.slice(11)), toMin(b.start.slice(11)) + b.duration]);
-  const blocks = st.blocks.filter((k) => k.date === date && (k.resource === 'all' || k.resource === service.resource))
+  const blocks = st.blocks.filter((k) => !k.pro_id && k.date === date && (k.resource === 'all' || k.resource === service.resource))
     .map((k) => [k.from ? toMin(k.from) : 0, k.to ? toMin(k.to) : 24 * 60]);
   const minStart = nowMs + (staff ? 0 : Number(B.minNoticeHours) || 0) * 3600e3;
   const pros = service.id ? prosFor(st, service) : [];
@@ -288,7 +350,7 @@ export function slotsFor(st, env, service, date, { ignoreId = null, staff = fals
       const overlaps = (r) => t < r[1] && r[0] < t + dur;
       if (blocks.some(overlaps)) continue;
       if (taken.filter(overlaps).length >= cap) continue;
-      if (cands && !cands.some((p) => proFree(st, nowMs, p.id, date, t, dur, ignoreId))) continue;
+      if (cands && !cands.some((p) => proWorks(st, p, date, t, dur) && proFree(st, nowMs, p.id, date, t, dur, ignoreId))) continue;
       out.push(toHHMM(t));
     }
   }
@@ -1364,7 +1426,12 @@ export async function handle(st, env, req) {
   }
 
   if (A[0] === 'blocks') {
-    if (method === 'GET') { const today = dayKey(localNow(env)); return ok({ blocks: st.blocks.filter((k) => k.date >= today).sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from)), resources: st.settings.resources }); }
+    if (method === 'GET') {
+      const today = dayKey(localNow(env));
+      // También se devuelve el horario de cada asesora, para verlo junto al de la casa.
+      const pros = prosAll(st).filter((p) => p.active !== false).map((p) => ({ id: p.id, name: p.name, specialty: p.specialty || '', follows: !p.schedule, week: proWeek(st, p), timeoff: st.blocks.filter((k) => k.pro_id === p.id && k.date >= today).length }));
+      return ok({ blocks: st.blocks.filter((k) => !k.pro_id && k.date >= today).sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from)), resources: st.settings.resources, pros });
+    }
     if (method === 'POST') {
       if (!isDate(body.date)) fail(422, 'Elegí el día.');
       const to = body.to_date && isDate(body.to_date) ? body.to_date : body.date;
@@ -1376,7 +1443,13 @@ export async function handle(st, env, req) {
       audit(st, env, staff, `Bloqueó ${body.date}${to !== body.date ? ` a ${to}` : ''}${body.from ? ` de ${body.from} a ${body.to || 'cierre'}` : ''}${body.reason ? ` (${clean(body.reason, 120)})` : ''}`);
       return ok({ blocks: made });
     }
-    if (method === 'DELETE') { const i = st.blocks.findIndex((k) => k.id === Number(A[1])); if (i >= 0) { const [k] = st.blocks.splice(i, 1); audit(st, env, staff, `Quitó el bloqueo del ${k.date}`); } return ok({ ok: true }); }
+    if (method === 'DELETE') {
+      const ids = String(A[1] || '').split(',').map(Number);
+      const gone = st.blocks.filter((k) => ids.includes(k.id) && !k.pro_id);
+      st.blocks = st.blocks.filter((k) => !gone.includes(k));
+      if (gone.length) audit(st, env, staff, `Quitó el bloqueo del ${gone[0].date}${gone.length > 1 ? ` al ${gone.at(-1).date}` : ''}`);
+      return ok({ ok: true });
+    }
   }
 
   if (A[0] === 'giftcards') {
@@ -1548,6 +1621,12 @@ export async function handle(st, env, req) {
   }
 
   // Asesoras: ficha, servicios que hace, forma de pago y liquidación de comisiones (solo administración).
+  if (A[0] === 'pros' && A[1] && A[2] === 'schedule') {
+    needAdmin(staff);
+    const p = prosAll(st).find((x) => x.id === Number(A[1]));
+    if (!p) fail(404, 'No encontramos esa asesora.');
+    return ok(await scheduleRoute(st, env, method, A.slice(3), body, p, staff));
+  }
   if (A[0] === 'pros') {
     needAdmin(staff);
     const month = /^\d{4}-\d{2}$/.test(q.month || '') ? q.month : dayKey(localNow(env)).slice(0, 7);
@@ -1610,6 +1689,7 @@ export async function handle(st, env, req) {
 async function proRoute(st, env, method, A, q, body, me) {
   const mine = (b) => b.pro_id === me.id;
   const who = me.name || me.email;
+  if (A[0] === 'schedule') return scheduleRoute(st, env, method, A.slice(1), body, me, me);
   // Sus clientas: ve la ficha y suma fotos de antes y después; no edita los datos.
   if (A[0] === 'clients') {
     const keys = new Set(st.bookings.filter((b) => mine(b) && b.status !== 'expired').map(clientKey));

@@ -326,3 +326,26 @@ td.r, th.r { text-align: right; }
 /* Ganancias y pérdidas */
 table.pnl tr.cur td { background: var(--bg); }
 table.pnl tr.tot td { border-top: 2px solid var(--line-2); }
+
+/* Horarios: semana editable (casa y asesoras), días libres y resumen */
+.how { margin: 0 0 14px; padding: 12px 14px 12px 34px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; display: grid; gap: 4px; font-size: 13px; }
+.wk { display: grid; gap: 6px; margin: 6px 0 4px; }
+.wk-row { display: grid; grid-template-columns: 128px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line-2); }
+.wk-row:last-child { border-bottom: 0; }
+.wk-day { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.wk-wins { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wk-win { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; }
+.wk-win input[type="time"] { width: 108px; }
+.wk-offl { display: none; }
+.wk-row.off .wk-win, .wk-row.off [data-addwin] { display: none; }
+.wk-row.off .wk-offl { display: inline; }
+.wk-row.off b { color: var(--muted); }
+.wk-ref { white-space: nowrap; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 4px 0 8px; font-size: 13px; }
+.seg label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+table.offs td { vertical-align: middle; }
+table.prosw th, table.prosw td { text-align: center; padding: 6px 4px; }
+table.prosw th:first-child, table.prosw td:first-child { text-align: left; }
+.conf { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: #fbeee0; border: 1px solid #e7c9a2; font-size: 13px; }
+.conf ul { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 700px) { .wk-row { grid-template-columns: 1fr; gap: 6px; } .wk-ref { white-space: normal; } }

@@ -1,7 +1,7 @@
 // Servidor de prueba para la vista previa: usa la misma lógica que el servidor real (spa-core),
 // pero guarda todo en este navegador. Mercado Pago y los emails quedan simulados.
 const C = window.__CORE;
-const KEY = 'casa-samadhi-demo-v5';
+const KEY = 'casa-samadhi-demo-v6';
 const DEMO_USERS = window.__CASA_DEMO_USERS;
 const base = location.href.split('#')[0].split('?')[0].replace(/\/$/, '');
 const env = {
@@ -33,6 +33,11 @@ function seedDemo() {
   // Asesoras: Trinidad (head spa) y Belén (manicuría) ya vienen en los datos iniciales; en la demo, con comisión de ejemplo.
   const bel = st.staff.find((x) => x.role === 'pro' && x.name === 'Belén');
   if (bel) Object.assign(bel, { phone: '221 555-4020', pay: { type: 'comision', percent: 40, base: 0 } });
+  // Horarios de ejemplo: Trinidad de martes a sábado; Belén de lunes a viernes y sábados a la mañana.
+  const day = (f, t) => [{ from: f, to: t }];
+  const tri0 = st.staff.find((x) => x.role === 'pro' && x.name === 'Trinidad');
+  if (tri0) tri0.schedule = { 0: [], 1: [], 2: day('10:00', '19:00'), 3: day('10:00', '19:00'), 4: day('10:00', '19:00'), 5: day('10:00', '19:00'), 6: day('10:00', '19:00') };
+  if (bel) bel.schedule = { 0: [], 1: day('10:00', '19:00'), 2: day('10:00', '19:00'), 3: day('10:00', '19:00'), 4: day('10:00', '19:00'), 5: day('10:00', '19:00'), 6: day('10:00', '14:00') };
   st.settings.pay = { ...st.settings.pay, transferEnabled: true, alias: 'ALIAS.DE.PRUEBA', holder: 'Casa Samadhi (datos de prueba)', bank: 'Banco de ejemplo' };
   // Turnos de ejemplo: los últimos 90 días y las próximas dos semanas.
   let seed = 11; const r = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
@@ -165,6 +170,8 @@ function seedDemo() {
    [20, 'Taller de cerámica', '16:00', '18:30', 25000, 'Modelado a mano y esmaltado. Materiales incluidos.']].forEach(([d, title, from, to, price, description]) => {
     st.events.push({ id: ++st.ids.event, title, date: C.addDays(today, d), from, to, price, description, active: true, image: '' });
   });
+  // Un día libre de ejemplo para Belén.
+  if (bel) { let d = C.addDays(today, 5); while ([0, 6].includes(new Date(d + 'T12:00:00Z').getUTCDay())) d = C.addDays(d, 1); st.blocks.push({ id: ++st.ids.block, date: d, from: '', to: '', resource: 'pro', pro_id: bel.id, reason: 'Turno médico' }); }
   // Caja de los últimos 14 días: fondo inicial, cobros de saldos, egresos y cierres (hoy, abierta).
   st.cash = st.cash || { moves: [], closings: [] }; st.ids.cash = st.ids.cash || 0;
   const addMove = (date, type, method, amount, concept, booking_id = null, by = recU.name, hm = '10:00') => st.cash.moves.push({ id: ++st.ids.cash, date, at: new Date(C.localToMs(`${date} ${hm}`)).toISOString(), type, method, amount, concept, booking_id, by });
