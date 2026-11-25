@@ -1045,6 +1045,40 @@ async function cashRoute(st, env, method, A, q, body, staff) {
   fail(404, 'No existe esa ruta.');
 }
 
+// ── Ganancias y pérdidas (mes a mes) ─────────────────────
+// Ingresos: señas cobradas online, gift cards vendidas en la web y todo lo que entró por la caja.
+// Egresos: lo que salió por la caja. Comisiones: de los turnos realizados (más el básico de quien lo tenga).
+const monthOf = (isoStr) => localDay(isoStr).slice(0, 7);
+export function profitAndLoss(st, env, months = 12) {
+  const now = dayKey(localNow(env)).slice(0, 7);
+  const keys = [];
+  for (let i = months - 1; i >= 0; i--) { const [y, m] = now.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 - i, 1)); keys.push(d.toISOString().slice(0, 7)); }
+  const rows = Object.fromEntries(keys.map((k) => [k, { month: k, bookings: 0, booked: 0, cancelled: 0, clients: new Set(), turnover: 0, income: 0, expenses: 0, commissions: 0 }]));
+  for (const b of st.bookings) {
+    const r = rows[b.start.slice(0, 7)];
+    if (r) {
+      if (b.status === 'completed') { r.bookings++; r.turnover += Number(b.price) || 0; r.clients.add(clientKey(b)); r.commissions += commissionOf(st, b); }
+      else if (ACTIVE.includes(b.status)) r.booked++;
+      else if (['cancelled', 'no_show'].includes(b.status)) r.cancelled++;
+    }
+    if (b.deposit_paid && ['mp', 'transfer'].includes(b.pay_method)) { const d = rows[monthOf(b.deposit_at || b.created_at)]; if (d) d.income += b.deposit_paid; }
+  }
+  for (const g of st.giftcards) { if (g.paid_at && g.payment_id) { const d = rows[monthOf(g.paid_at)]; if (d) d.income += g.amount; } }
+  for (const m of cashOf(st).moves) { const d = rows[m.date.slice(0, 7)]; if (d) d[m.type === 'in' ? 'income' : 'expenses'] += m.amount; }
+  // Básico mensual de las asesoras que lo tienen (desde el mes en que se sumaron).
+  for (const p of prosAll(st)) {
+    const pay = payOf(p);
+    if (pay.type !== 'basico_comision' || !pay.base || p.active === false) continue;
+    for (const k of keys) if (!p.created_at || p.created_at.slice(0, 7) <= k) rows[k].commissions += pay.base;
+  }
+  const list = keys.map((k) => { const r = rows[k]; return { ...r, clients: r.clients.size, result: r.income - r.expenses - r.commissions }; });
+  const total = list.reduce((a, r) => ({ bookings: a.bookings + r.bookings, turnover: a.turnover + r.turnover, income: a.income + r.income, expenses: a.expenses + r.expenses, commissions: a.commissions + r.commissions, result: a.result + r.result }),
+    { bookings: 0, turnover: 0, income: 0, expenses: 0, commissions: 0, result: 0 });
+  // Clientas distintas en todo el período (no la suma de cada mes).
+  total.clients = new Set(st.bookings.filter((b) => b.status === 'completed' && keys.includes(b.start.slice(0, 7))).map(clientKey)).size;
+  return { months: list.reverse(), total, current: now };
+}
+
 // ── Router ───────────────────────────────────────────────
 /**
  * req: { method, path, query, body, staff } · devuelve { status, body, session? }
@@ -1259,6 +1293,7 @@ export async function handle(st, env, req) {
   if (A[0] === 'clients' && method === 'GET' && !A[1]) return ok(clients(st, env, q));
   if (A[0] === 'clients' && A[1] === 'ficha' && method === 'GET') return ok(clientDetail(st, env, q.key));
   if (A[0] === 'cash') return ok(await cashRoute(st, env, method, A, q, body, staff));
+  if (A[0] === 'pnl' && method === 'GET') { needAdmin(staff); return ok(profitAndLoss(st, env, Math.min(36, Math.max(1, Number(q.months) || 12)))); }
   if (A[0] === 'clients' && method === 'POST' && !A[1]) { const r = createClient(st, env, body, staff); audit(st, env, staff, `Cargó a la clienta ${r.client.name}`); return ok(r); }
   if (A[0] === 'clients' && A[1] === 'photos' && method === 'POST') { const r = await addClientPhoto(st, env, body, staff); audit(st, env, staff, `Sumó fotos de antes y después a ${r.client.name}`); return ok(r); }
   if (A[0] === 'clients' && A[1] === 'photos' && method === 'DELETE') { const r = await removeClientPhoto(st, env, body); audit(st, env, staff, `Borró una foto de ${r.client.name}`); return ok(r); }

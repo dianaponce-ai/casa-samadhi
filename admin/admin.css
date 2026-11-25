@@ -322,3 +322,7 @@ td.r, th.r { text-align: right; }
 @media (max-width: 900px) { .side nav .nav-group { padding: 8px 6px 8px 14px; align-self: center; white-space: nowrap; } }
 /* Caja */
 .warn { color: var(--warn, #9a5b14); }
+
+/* Ganancias y pérdidas */
+table.pnl tr.cur td { background: var(--bg); }
+table.pnl tr.tot td { border-top: 2px solid var(--line-2); }

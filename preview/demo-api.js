@@ -170,7 +170,8 @@ function seedDemo() {
   const addMove = (date, type, method, amount, concept, booking_id = null, by = recU.name, hm = '10:00') => st.cash.moves.push({ id: ++st.ids.cash, date, at: new Date(C.localToMs(`${date} ${hm}`)).toISOString(), type, method, amount, concept, booking_id, by });
   const methods = ['efectivo', 'efectivo', 'efectivo', 'transferencia', 'transferencia', 'debito', 'mercadopago'];
   let leaves = 0;
-  for (let i = -14; i <= 0; i++) {
+  // Movimientos de los últimos 3 meses (para Ganancias y pérdidas); cierres de caja, los últimos 14 días.
+  for (let i = -95; i <= 0; i++) {
     const date = C.addDays(today, i);
     if (i === -14) addMove(date, 'in', 'efectivo', 20000, 'Fondo inicial de caja', null, admU.name, '09:30');
     // Saldos cobrados en la casa de los turnos realizados ese día.
@@ -183,6 +184,7 @@ function seedDemo() {
     if (r() < 0.4) addMove(date, 'out', 'efectivo', 6000 + Math.round(r() * 9) * 1000, pick(['Café y pastelería', 'Insumos de manicuría', 'Flores para la recepción', 'Artículos de limpieza']), null, recU.name, '11:15');
     if (i % 7 === 0 && i < 0) addMove(date, 'out', 'transferencia', 35000 + Math.round(r() * 5) * 5000, 'Productos de head spa (proveedor)', null, admU.name, '15:00');
     if (i === 0) break; // hoy: la caja queda abierta
+    if (i < -14) continue; // los cierres, solo de las últimas dos semanas
     const day = st.cash.moves.filter((m) => m.date === date && m.method === 'efectivo');
     const cin = day.filter((m) => m.type === 'in').reduce((a, m) => a + m.amount, 0), cout = day.filter((m) => m.type === 'out').reduce((a, m) => a + m.amount, 0);
     const expected = leaves + cin - cout;
