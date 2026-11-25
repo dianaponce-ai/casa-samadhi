@@ -7,6 +7,8 @@ const fmt = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Turnero solo: el link de Instagram (/turnos) abre directo la reserva, sin la web.
 const SOLO = /\/turnos(\.html)?\/?$/.test(location.pathname) || /^#turnos/.test(location.hash) || new URLSearchParams(location.search).has('turnos');
+// Meta Pixel: eventos estándar (si el pixel está cargado).
+const px = (ev, data) => { try { window.fbq?.('track', ev, data); } catch {} };
 const MEDIA = window.__CASA_MEDIA || ((u) => (/^https?:\/\//.test(u) ? u : '/' + String(u || '').replace(/^\//, '')));
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -446,6 +448,7 @@ async function submitBooking() {
   try {
     const items = bk.items.map((it) => ({ service_id: it.service.id, date: it.date, time: it.time, pro_id: it.pro || null }));
     const r = await api('/api/bookings', { items, ...f, gift_code: bk.gift?.code || '', pay_method: bk.payMethod });
+    px('Schedule', { content_name: bk.items.map((it) => it.service.name).join(' + '), value: bk.items.reduce((a, it) => a + (it.service.price || 0), 0), currency: 'ARS' });
     bk.items = [];
     if (r.pay_url) { bk.sending = false; goPay(r.pay_url); return; }
     showBooking(r.booking.token, r.booking);
@@ -780,6 +783,7 @@ function route() {
 function bind() {
   document.addEventListener('click', async (e) => {
     const t = e.target;
+    if (t.closest('a[href^="https://wa.me"]')) px('Contact', { content_name: 'WhatsApp' });
     const act = t.closest('[data-act]')?.dataset.act;
     if (act) { const [k, v] = act.split(':'); if (k === 'book') openBooking({ serviceId: svcBySlug(v)?.id }); if (k === 'cat') openBooking({ category: v }); return; }
     const wk = t.closest('[data-work]'); if (wk) { const [sid, i] = wk.dataset.work.split(':'); return openWork(sid, Number(i)); }
@@ -835,7 +839,7 @@ function bind() {
     }
     // Pasos de la reserva
     const pick = t.closest('[data-pick]');
-    if (pick) { bk.info = SITE.services.find((s) => s.id === Number(pick.dataset.pick)) || null; renderBooking(); $('#drawer .dbody')?.scrollTo(0, 0); if (SOLO) window.scrollTo(0, Math.min(window.scrollY, $('#drawer').offsetTop)); return; }
+    if (pick) { bk.info = SITE.services.find((s) => s.id === Number(pick.dataset.pick)) || null; if (bk.info) px('ViewContent', { content_name: bk.info.name, content_category: bk.info.category, content_ids: [bk.info.slug], content_type: 'product', value: bk.info.price || 0, currency: 'ARS' }); renderBooking(); $('#drawer .dbody')?.scrollTo(0, 0); if (SOLO) window.scrollTo(0, Math.min(window.scrollY, $('#drawer').offsetTop)); return; }
     const choose = t.closest('[data-choose]');
     if (choose) { bk.info = null; bk.service = SITE.services.find((s) => s.id === Number(choose.dataset.choose)); bk.pro = null; bk.step = 2; bk.days = []; bk.time = ''; bk.date = lockDate(); bk.error = ''; renderBooking(); loadDays(); return; }
     const proB = t.closest('[data-pro]'); if (proB) { bk.pro = Number(proB.dataset.pro) || null; bk.time = ''; bk.days = []; return loadDays(); }
