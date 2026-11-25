@@ -15,6 +15,8 @@ const strip = (src) => src.replace(/^import .*$/gm, '').replace(/^export /gm, ''
 
 const html = read('public/index.html');
 let body = html.split('<!--BODY-->')[1].split('<!--/BODY-->')[0];
+// Meta Pixel: el mismo bloque que en la web (solo en la versión para hosting).
+const metaPixel = (html.match(/<!-- Meta Pixel Code -->[\s\S]*?<!-- End Meta Pixel Code -->/) || [''])[0];
 const adminHtml = read('admin/index.html').split('<body>')[1].split('<script')[0];
 const adminCss = read('admin/admin.css')
   .replace(/:root:not\(\[data-theme="light"\]\)/g, ':host').replace(/:root\[data-theme="dark"\]/g, ':host-context([data-theme="dark"])')
@@ -72,6 +74,7 @@ if (standalone) {
 <meta name="description" content="Casa Samadhi: head spa, masajes, manicuría, pedicuría y cafetería en La Plata.">
 <meta name="theme-color" content="#f4efe6">
 <meta name="robots" content="noindex">
+${metaPixel}
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%234c5a3d'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' fill='%23f4efe6' text-anchor='middle'%3ECS%3C/text%3E%3C/svg%3E">
 ${page.replace('<meta name="claude:viewport-fit-sides" content="cover">\n', '').replace('</style>', '</style>\n</head>\n<body>')}</body>
 </html>
