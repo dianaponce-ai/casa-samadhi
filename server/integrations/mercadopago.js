@@ -15,7 +15,8 @@ async function mp(method, path, body, idem) {
 
 /** Devuelve el link para pagar. kind: 'booking' (seña) o 'gift'. */
 export async function createPayment({ kind, token, title, amount, email, ref }) {
-  const back = `${config.publicUrl}/?pago=${kind}.${token}`;
+  // Las reservas vuelven al turnero (/turnos); las gift cards, a la web.
+  const back = `${config.publicUrl}/${kind === 'booking' ? 'turnos' : ''}?pago=${kind}.${token}`;
   if (config.mp.mock) return `${back}&simulado=1`;
   const pref = await mp('POST', '/checkout/preferences', {
     items: [{ id: ref, title: title.slice(0, 250), quantity: 1, unit_price: Number(amount), currency_id: 'ARS' }],

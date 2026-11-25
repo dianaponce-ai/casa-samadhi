@@ -562,3 +562,6 @@ body.solo .solo-foot { display: grid; justify-items: center; gap: 4px; text-alig
 .plaque .pps { display: flex; gap: 22px; }
 .plaque .pl-price.two { flex-direction: column; gap: 10px; border-radius: 28px; padding: 14px 24px 12px; }
 .plaque .pl-price.two .sep { width: 70%; height: 1px; }
+
+.solo-home { position: absolute; z-index: 2; top: calc(14px + env(safe-area-inset-top, 0px)); left: 16px; color: var(--marfil); font-size: 10px; letter-spacing: .24em; text-transform: uppercase; text-decoration: none; padding: 8px 12px; border: 1px solid rgba(244, 239, 230, .5); border-radius: 999px; background: rgba(25, 24, 22, .25); }
+.solo-home:hover { background: rgba(25, 24, 22, .45); }
