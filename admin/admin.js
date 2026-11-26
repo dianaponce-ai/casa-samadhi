@@ -323,6 +323,7 @@ async function viewBooking(id) {
   const rest = Math.max(0, b.price - b.deposit_paid - b.gift_applied);
   const wa = `https://wa.me/549${String(b.phone).replace(/\D/g, '').replace(/^0/, '').replace(/^549?/, '')}`;
   const transfer = b.status === 'pending_transfer' || (b.status === 'expired' && b.pay_method === 'transfer');
+  const active = ['confirmed', 'pending_payment', 'pending_transfer', 'attention'].includes(b.status);
   $('#view').innerHTML = `
     <div class="page-head"><div><h1>Turno ${esc(b.code)}</h1><div class="sub">${pill(b.status)} ${b.refund_pending ? '<span class="pill s-attention">Seña por devolver</span>' : ''} · ${b.source === 'panel' ? 'cargado en el panel' : 'reservado en la web'} el ${at(b.created_at)}</div></div>
       <div class="actions"><a class="btn" href="#agenda/${b.start.slice(0, 10)}">Ver en la agenda</a></div></div>
@@ -362,7 +363,24 @@ async function viewBooking(id) {
         <h2>Quién cambió qué</h2>${auditList(audit)}
         ${emails.length ? `<h2>Emails</h2><ul class="history">${emails.map((m) => `<li><span>${at(m.at)}</span><span>${esc(m.subject)} · <i>${esc(m.status)}</i></span></li>`).join('')}</ul>` : ''}
       </div>
-    </div>`;
+    </div>
+    ${active || isAdmin() ? `<div class="card form" style="margin-top:14px" id="cxCard"><h2>${active ? 'Cancelar o eliminar el turno' : 'Eliminar el turno'}</h2>
+      ${active ? `<div class="row"><label class="fl"><span>Motivo (queda en el historial)</span><input id="cxReason" placeholder="Ej.: la clienta pidió cancelar"></label>
+        <label class="fl"><span>Mensaje para la clienta (opcional, va en el correo)</span><textarea id="cxMsg" rows="2" placeholder="Ej.: Escribinos por WhatsApp y te damos otro horario."></textarea></label></div>
+        <label class="check"><input type="checkbox" id="cxNotify" ${b.email ? 'checked' : 'disabled'}> ${b.email ? `Avisarle a la clienta por correo (${esc(b.email)}) que su turno fue cancelado` : 'La clienta no dejó correo: avisale por WhatsApp'}</label>
+        ${b.deposit_paid ? `<p class="small muted">Pagó ${fmt(b.deposit_paid)} de seña: queda marcada como "seña por devolver" hasta que la resuelvas.</p>` : ''}
+        <div class="actions"><button class="btn danger" id="cxGo">Cancelar turno</button></div>` : ''}
+      ${isAdmin() ? `<p class="small muted" ${active ? 'style="margin-top:10px"' : ''}>Eliminar lo borra para siempre del panel, por ejemplo un turno de prueba. No le avisa a la clienta${active ? ': si querés avisarle, primero cancelalo' : ''}.</p>
+        <div class="actions"><button class="btn danger" id="cxDel">Eliminar turno</button></div>` : ''}
+      <p class="err" id="cxErr"></p></div>` : ''}`;
+  $('#cxGo')?.addEventListener('click', (e) => confirmInline(e.target, $('#cxNotify').checked ? '¿Cancelar el turno y avisarle a la clienta?' : '¿Cancelar el turno sin avisarle?', async () => {
+    $('#cxErr').textContent = '';
+    try { await api('/bookings/' + b.id, { method: 'PATCH', body: { status: 'cancelled', reason: $('#cxReason').value, message: $('#cxMsg').value, notify: $('#cxNotify').checked } }); toast($('#cxNotify').checked ? 'Turno cancelado: le avisamos por correo' : 'Turno cancelado'); viewBooking(b.id); } catch (err) { $('#cxErr').textContent = err.message; }
+  }, 'Sí, cancelar'));
+  $('#cxDel')?.addEventListener('click', (e) => confirmInline(e.target, `¿Eliminar el turno ${b.code} para siempre?`, async () => {
+    $('#cxErr').textContent = '';
+    try { await api('/bookings/' + b.id, { method: 'DELETE' }); toast('Turno eliminado'); navTo('turnos'); } catch (err) { $('#cxErr').textContent = err.message; }
+  }, 'Sí, eliminar'));
   const loadTimes = async () => {
     const r = await api(`/slots?service=${b.service_id}&date=${$('#rDate').value}&ignore=${b.id}${b.pro_id ? `&pro=${b.pro_id}` : ''}`);
     const cur = $('#rDate').value === b.start.slice(0, 10) ? b.start.slice(11) : '';
@@ -933,11 +951,11 @@ async function viewSettings() {
 async function viewUsers() {
   const r = await api('/users');
   $('#view').innerHTML = `<div class="page-head"><div><h1>Usuarios</h1><div class="sub">Quién entra al panel. <b>Web master</b> y <b>Administración</b> ven todo; <b>Recepción</b> ve turnos, agenda, clientas, servicios, horarios, gift cards y eventos; cada <b>Asesora de belleza</b> ve solo sus turnos, sus clientas y sus comisiones. Podés crear todos los usuarios que necesites de cada rol.</div></div></div>
-    <div class="grid g2"><div class="card"><table>${r.users.map((u) => `<tr><td>${esc(u.name || '—')}<div class="small muted">${esc(u.email)}${u.has_password === false ? ' · sin contraseña todavía' : ''}</div></td><td>${esc(u.role_label)}</td><td class="r">${u.id === ME.id ? '<span class="muted small">Vos</span>' : u.role === 'pro' ? '<a class="small" href="#asesoras">Ver en Asesoras</a>' : `<button class="btn sm danger" data-rmu="${u.id}">Quitar acceso</button>`}</td></tr>`).join('')}</table></div>
+    <div class="grid g2"><div class="card"><table>${r.users.map((u) => `<tr><td>${esc(u.name || '—')}<div class="small muted">${esc(u.email)}${u.has_password === false ? ' · sin contraseña todavía' : ''}</div></td><td>${esc(u.role_label)}</td><td class="r">${u.id === ME.id ? '<span class="muted small">Vos</span>' : u.role === 'pro' ? '<a class="small" href="#asesoras">Ver en Asesoras</a>' : `<button class="btn sm danger" data-rmu="${u.id}">Eliminar</button>`}</td></tr>`).join('')}</table></div>
       <div class="card form"><h2>Nuevo usuario</h2><label class="fl"><span>Nombre</span><input id="uN"></label><label class="fl"><span>Email</span><input id="uE" type="email"></label><label class="fl"><span>Contraseña (10+ caracteres)</span><input id="uP" type="password" autocomplete="new-password"></label>
         <label class="fl"><span>Rol</span><select id="uR">${Object.entries(r.roles).map(([k, l]) => `<option value="${k}" ${k === 'staff' ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="help">Si es Asesora de belleza, después asignale sus servicios en Asesoras de belleza.</span></label><p class="err" id="uErr"></p><div class="actions"><button class="btn primary" id="uAdd">Crear usuario</button></div></div></div>`;
   $('#uAdd').onclick = async () => { try { const x = await api('/users', { method: 'POST', body: { name: $('#uN').value, email: $('#uE').value, password: $('#uP').value, role: $('#uR').value } }); toast('Usuario creado'); if (x.user.role === 'pro') navTo('asesora/' + x.user.id); else viewUsers(); } catch (e) { $('#uErr').textContent = e.message; } };
-  $$('[data-rmu]').forEach((b) => (b.onclick = (e) => confirmInline(e.target, '¿Quitar el acceso?', async () => { try { await api('/users/' + b.dataset.rmu, { method: 'DELETE' }); viewUsers(); } catch (err) { toast(err.message, true); } }, 'Quitar')));
+  $$('[data-rmu]').forEach((b) => (b.onclick = (e) => confirmInline(e.target, '¿Eliminar este usuario? Ya no va a poder entrar al panel.', async () => { try { await api('/users/' + b.dataset.rmu, { method: 'DELETE' }); toast('Usuario eliminado'); viewUsers(); } catch (err) { toast(err.message, true); } }, 'Sí, eliminar')));
 }
 
 // ── Asesoras (administración) ───────────────────────
@@ -1033,7 +1051,7 @@ async function viewPro(id) {
   const d = await api(`/pros/${id}?month=${prosMonth}`);
   const p = d.pro, r = d.report;
   $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#asesoras">← Asesoras de belleza</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Asesora')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}</div></div>
-      <div class="actions"><button class="btn" id="pEdit">Editar</button><a class="btn" href="#turnos" id="pTurnos">Ver sus turnos</a></div></div>
+      <div class="actions"><button class="btn" id="pEdit">Editar</button><a class="btn" href="#turnos" id="pTurnos">Ver sus turnos</a><button class="btn danger" id="pDel">Borrar asesora</button></div></div>
     <div id="pEd"></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(r.month, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(r.month, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(r.month)))}</span></div>
     ${commissionCards(r)}
@@ -1049,6 +1067,12 @@ async function viewPro(id) {
   $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPro(id); }));
   $$('tr[data-href]').forEach((tr) => (tr.onclick = () => navTo(tr.dataset.href)));
   $('#pEdit').onclick = () => proForm($('#pEd'), p, d);
+  $('#pDel').onclick = (e) => {
+    if (p.keep?.active || p.keep?.done) return toast(p.keep.active ? `${p.name} tiene ${p.keep.active} turno${p.keep.active === 1 ? '' : 's'} por venir: reasignalos o cancelalos antes de borrarla.` : `${p.name} tiene turnos realizados con comisión: para no perder ese historial, dala de baja desde Editar (destildá "Activa").`, true);
+    confirmInline(e.target, `¿Borrar a ${p.name}? También se borra su usuario del panel.`, async () => {
+      try { await api('/pros/' + p.id, { method: 'DELETE' }); PROS_CACHE = null; toast(`${p.name} ya no está en Asesoras`); navTo('asesoras'); } catch (err) { toast(err.message, true); }
+    }, 'Sí, borrar');
+  };
 }
 function commissionCards(r) {
   return `<div class="grid g4">
