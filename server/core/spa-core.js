@@ -157,6 +157,10 @@ const MIGRATIONS = {
     st.services = st.services.filter((x) => x.id !== s.id);
     for (const p of prosAll(st)) if (p.services) p.services = p.services.filter((id) => id !== s.id);
   },
+  'avisos-equipo-2026-11': (st) => {
+    // Los avisos al equipo (turno nuevo, transferencias, cancelaciones) van al correo de la casa, si todavía no hay uno cargado.
+    if (!st.settings.booking.staffEmails && !st.settings.site.email) st.settings.booking.staffEmails = BOOKING.staffEmails;
+  },
 };
 /** El usuario web master (sin contraseña hasta que la defina). */
 function addWebmaster(st, at) {

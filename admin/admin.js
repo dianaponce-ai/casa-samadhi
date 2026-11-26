@@ -912,7 +912,7 @@ async function viewSettings() {
       <div class="card form"><h2>Reservas</h2>
         <div class="row">${inp('booking.depositPercent', 'Seña (%)', b.depositPercent, 'type="number" min="0" max="100"')}${inp('booking.minNoticeHours', 'Anticipación mínima (horas)', b.minNoticeHours, 'type="number" min="0"')}${inp('booking.maxDaysAhead', 'Hasta cuántos días adelante', b.maxDaysAhead, 'type="number" min="1"')}</div>
         <div class="row">${inp('booking.slotStep', 'Turnos cada (minutos)', b.slotStep, 'type="number" min="5" step="5"')}${inp('booking.holdMinutes', 'Minutos para pagar la seña', b.holdMinutes, 'type="number" min="10"')}${inp('booking.cancelHours', 'Cancelar online hasta (horas antes)', b.cancelHours, 'type="number" min="0"')}</div>
-        <div class="row">${inp('booking.reminderHours', 'Recordatorio (horas antes)', b.reminderHours, 'type="number" min="0"')}${inp('booking.staffEmails', 'Avisos de turnos nuevos a (emails separados por coma)', b.staffEmails)}</div>
+        <div class="row">${inp('booking.reminderHours', 'Recordatorio (horas antes)', b.reminderHours, 'type="number" min="0"')}${inp('booking.staffEmails', 'Avisos al equipo a (turno nuevo, transferencias, cancelaciones; emails separados por coma)', b.staffEmails)}</div>
         <p class="small muted">Con seña en 0% los turnos online se confirman sin pagar nada.</p></div>
       ${NF ? `<div class="card form" id="nfCard"><h2>Integración con Nifty</h2>
         <p class="small muted">Cada turno (reservado, confirmado, realizado o cancelado) se manda al embudo de Casa Samadhi en Nifty, con el canal del que vino (Meta, Google u Otro). No se mandan datos de las clientas. La dirección y la clave se generan en Nifty: ficha del cliente → Embudo → Turnos → Conectar sistema de reservas.</p>
@@ -980,7 +980,7 @@ async function viewPros(editId = null) {
       <div class="card kpi"><div class="l">Proyectado del mes</div><div class="v">${fmt(tot.projected)}</div><div class="l">con los turnos que faltan</div></div>
     </div>
     ${r.pros.length ? `<div class="card tablewrap"><table><tr><th>Asesora</th><th>Servicios</th><th>Forma de pago</th><th class="r">Realizados</th><th class="r">Comisión ganada</th><th class="r">A cobrar</th><th class="r">Por venir</th></tr>
-      ${[...act, ...off].map((p) => `<tr class="click" data-href="asesora/${p.id}"><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill s-cancelled">De baja</span>'}${p.has_access ? '' : ' <span class="pill" title="No tiene usuario para entrar al panel">Sin acceso</span>'}<div class="small muted">${esc(p.specialty || p.phone || p.email)}</div></td>
+      ${[...act, ...off].map((p) => `<tr class="click" data-href="asesora/${p.id}"><td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill s-cancelled">De baja</span>'}${p.has_access ? '' : ' <span class="pill" title="No tiene usuario para entrar al panel">Sin acceso</span>'}${p.email ? '' : ' <span class="pill s-attention" title="Cargale un correo para que le lleguen sus turnos">Sin correo: no recibe avisos</span>'}<div class="small muted">${esc(p.specialty || p.phone || p.email)}</div></td>
         <td class="small">${esc(p.service_names.join(', ') || '—')}</td><td class="small">${esc(payText(p.pay))}</td><td class="r n">${p.month.done}</td><td class="r n">${fmt(p.month.earned)}</td><td class="r n"><b>${fmt(p.month.total)}</b></td><td class="r n">${p.month.next ? `${fmt(p.month.upcoming)}<div class="small muted">${p.month.next} turno${p.month.next === 1 ? '' : 's'}</div>` : '—'}</td></tr>`).join('')}</table></div>`
       : '<div class="empty card">Todavía no cargaste asesoras. Cuando las cargues con sus servicios, cada turno queda asignado a quien lo atiende y se calcula su comisión.</div>'}`;
   $$('[data-m]').forEach((b) => (b.onclick = () => { prosMonth = b.dataset.m; viewPros(); }));
@@ -1002,9 +1002,9 @@ function proForm(box, p, meta) {
         <div class="row">${inp('cuit', 'CUIT / CUIL')}${inp('alias', 'Alias o CBU para pagarle')}</div>
         ${inp('address', 'Dirección')}
         <label class="fl"><span>Notas internas</span><textarea id="pf_notes" rows="2">${esc(v.notes || '')}</textarea></label>
-        <h3 class="h3">Acceso al panel</h3>
-        <p class="small muted">Con usuario, entra en /admin y ve solo sus turnos, los servicios que hace y sus comisiones. Puede cancelar un turno suyo y todo queda registrado.</p>
-        <div class="row">${inp('email', 'Email (usuario)', 'email', 'autocomplete="off"')}<label class="fl"><span>${v.has_access ? 'Nueva contraseña (opcional)' : 'Contraseña (10+ caracteres)'}</span><input id="pf_password" type="password" autocomplete="new-password" placeholder="${v.has_access ? 'Dejala vacía para no cambiarla' : 'Vacía = sin acceso por ahora'}"></label></div>
+        <h3 class="h3">Correo y acceso al panel</h3>
+        <p class="small muted">A su correo le llega cada turno suyo que se confirma ("Tenés un turno nuevo", con su comisión) y cada uno que se cancela. Con contraseña, además entra en /admin y ve solo sus turnos, los servicios que hace y sus comisiones.</p>
+        <div class="row">${inp('email', 'Correo (avisos de turnos y usuario)', 'email', 'autocomplete="off"')}<label class="fl"><span>${v.has_access ? 'Nueva contraseña (opcional)' : 'Contraseña (10+ caracteres)'}</span><input id="pf_password" type="password" autocomplete="new-password" placeholder="${v.has_access ? 'Dejala vacía para no cambiarla' : 'Vacía = sin acceso por ahora'}"></label></div>
         ${v.has_access ? '<label class="check"><input type="checkbox" id="pf_noaccess"> Quitarle el acceso al panel</label>' : ''}
         ${p ? `<label class="check"><input type="checkbox" id="pf_active" ${v.active ? 'checked' : ''}> Activa (si la das de baja no se le asignan turnos nuevos ni puede entrar)</label>` : ''}
       </div>
@@ -1050,7 +1050,7 @@ async function viewPro(id) {
   prosMonth = prosMonth || monthKey();
   const d = await api(`/pros/${id}?month=${prosMonth}`);
   const p = d.pro, r = d.report;
-  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#asesoras">← Asesoras de belleza</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Asesora')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}</div></div>
+  $('#view').innerHTML = `<div class="page-head"><div><a class="small" href="#asesoras">← Asesoras de belleza</a><h1 style="margin-top:6px">${esc(p.name)}</h1><div class="sub">${p.active ? '' : '<span class="pill s-cancelled">De baja</span> · '}${esc(p.specialty || 'Asesora')} · ${esc(payText(p.pay))}${p.has_access ? ` · entra como ${esc(p.email)}` : ' · sin acceso al panel'}${p.email ? ` · avisos a ${esc(p.email)}` : ' · <b>sin correo: no le llegan los avisos de sus turnos</b>'}</div></div>
       <div class="actions"><button class="btn" id="pEdit">Editar</button><a class="btn" href="#turnos" id="pTurnos">Ver sus turnos</a><button class="btn danger" id="pDel">Borrar asesora</button></div></div>
     <div id="pEd"></div>
     <div class="daynav" style="margin-bottom:14px"><button class="btn sm" data-m="${addMonth(r.month, -1)}">← Mes anterior</button><button class="btn sm" data-m="${monthKey()}">Este mes</button><button class="btn sm" data-m="${addMonth(r.month, 1)}">Mes siguiente →</button><span class="t">${esc(capF(monthLabel(r.month)))}</span></div>
