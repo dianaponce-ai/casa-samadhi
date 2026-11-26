@@ -614,3 +614,66 @@ test('Nifty: arma el lote sin datos personales, con el canal; reintenta si falla
   assert.equal(JSON.parse(job.body).turnos[0].estado, 'confirmado');
   assert.equal(JSON.parse(job.body).turnos[0].sena, 18000);
 });
+
+test('cancelar con aviso (y mensaje) o sin aviso; eliminar turnos; en Nifty quedan como cancelados', async () => {
+  const { niftyBatch, niftyDone } = await import('../server/core/spa-core.js');
+  const st = seedState(), env = { ...makeEnv(), deleteImage: async (r) => env.deleted.push(r), deleted: [] };
+  const admin = { id: 900, email: 'adm@ejemplo.com', name: 'Adm', role: 'admin', password_hash: 'x$x' }, recep = { id: 901, email: 'rec@ejemplo.com', name: 'Rec', role: 'staff', password_hash: 'x$x' };
+  st.staff.push(admin, recep);
+  const book = async (time, extra = {}) => (await call(st, env, 'POST', '/api/admin/bookings', { service_id: 1, date: '2026-11-05', time, name: 'Ana Prueba', email: 'ana@ejemplo.com', phone: '221 555 1234', ...extra }, admin)).booking;
+  // Cancelar avisando, con mensaje para la clienta
+  const a = await book('10:00');
+  env.sent.length = 0;
+  await call(st, env, 'PATCH', `/api/admin/bookings/${a.id}`, { status: 'cancelled', reason: 'pidió cancelar', message: 'Escribinos y te damos otro horario.', notify: true }, recep);
+  const m = env.sent.find((x) => x.template === 'booking_cancelled');
+  assert.equal(m.to, 'ana@ejemplo.com');
+  assert.ok(m.html.includes('Escribinos y te damos otro horario.') && !m.html.includes('pidió cancelar')); // el motivo interno no va en el correo
+  assert.equal(st.bookings.find((x) => x.id === a.id).status, 'cancelled');
+  // Cancelar sin avisar
+  const b = await book('12:00');
+  env.sent.length = 0;
+  await call(st, env, 'PATCH', `/api/admin/bookings/${b.id}`, { status: 'cancelled', notify: false }, admin);
+  assert.ok(!env.sent.some((x) => x.template === 'booking_cancelled'));
+  // Eliminar: solo administración; si tiene cobros en la caja, primero se borran
+  await call(st, env, 'PUT', '/api/admin/nifty', { enabled: true, url: 'https://nifty-agency.com/webhooks/turnos/47', secret: 'nft_' + 'a'.repeat(48) }, admin);
+  const c = await book('15:00');
+  niftyDone(st, env, niftyBatch(st, env), { ok: true }); // Nifty ya los tiene
+  st.bookings.find((x) => x.id === c.id).transfer_proof = 'uploads/comprobante-x.png';
+  await assert.rejects(call(st, env, 'DELETE', `/api/admin/bookings/${c.id}`, undefined, recep), (e) => e.status === 403);
+  await call(st, env, 'POST', '/api/admin/cash/moves', { type: 'in', method: 'efectivo', amount: 5000, booking_id: c.id }, admin);
+  await assert.rejects(call(st, env, 'DELETE', `/api/admin/bookings/${c.id}`, undefined, admin), (e) => e.status === 409);
+  st.cash.moves = [];
+  env.sent.length = 0;
+  await call(st, env, 'DELETE', `/api/admin/bookings/${c.id}`, undefined, admin);
+  assert.ok(!st.bookings.some((x) => x.id === c.id));
+  assert.deepEqual(env.deleted, ['uploads/comprobante-x.png']);
+  assert.equal(env.sent.length, 0); // eliminar no manda correos
+  assert.ok(slotsFor(st, env, st.services[0], '2026-11-05').includes('15:00')); // el horario queda libre
+  const job = niftyBatch(st, env);
+  const t = JSON.parse(job.body).turnos.find((x) => x.codigo === c.code);
+  assert.equal(t.estado, 'cancelado');
+  niftyDone(st, env, job, { ok: true });
+  assert.equal(niftyBatch(st, env), null);
+  assert.ok(st.audit.some((x) => x.action.startsWith(`Eliminó el turno ${c.code}`)));
+});
+
+test('borrar asesoras: con turnos por venir o realizados no; con solo cancelados sí (y su usuario)', async () => {
+  const st = seedState(), env = makeEnv();
+  const admin = { id: 900, email: 'adm@ejemplo.com', name: 'Adm', role: 'admin', password_hash: 'x$x' }; st.staff.push(admin);
+  const tri = st.staff.find((u) => u.name === 'Trinidad'), bel = st.staff.find((u) => u.name === 'Belén');
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-05', time: '10:00', ...who });
+  assert.equal(st.bookings[0].pro_id, tri.id);
+  await assert.rejects(call(st, env, 'DELETE', `/api/admin/pros/${tri.id}`, undefined, admin), (e) => e.status === 409 && /por venir/.test(e.message));
+  await call(st, env, 'POST', `/api/bookings/${r.booking.token}/cancel`, {});
+  await call(st, env, 'DELETE', `/api/admin/pros/${tri.id}`, undefined, admin);
+  await call(st, env, 'DELETE', `/api/admin/pros/${bel.id}`, undefined, admin);
+  assert.ok(!st.staff.some((u) => u.role === 'pro'));
+  assert.equal(st.bookings[0].pro_id, null);
+  assert.equal(st.bookings[0].pro_name, 'Trinidad'); // en el historial sigue figurando
+  // Sin asesoras, el turnero sigue ofreciendo horarios (el turno queda sin asignar).
+  assert.ok(slotsFor(st, env, st.services[0], '2026-11-05').includes('10:00'));
+  // Una asesora con turnos realizados no se borra: se da de baja.
+  const p = (await call(st, env, 'POST', '/api/admin/pros', { name: 'Sofía', services: [1], pay: { type: 'comision', percent: 40 } }, admin)).pro;
+  st.bookings.push({ ...st.bookings[0], id: 999, pro_id: p.id, status: 'completed' });
+  await assert.rejects(call(st, env, 'DELETE', `/api/admin/pros/${p.id}`, undefined, admin), (e) => e.status === 409 && /dala de baja/.test(e.message));
+});

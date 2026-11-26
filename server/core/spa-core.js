@@ -603,7 +603,7 @@ async function confirmEmails(st, env, b, { byStaff = false } = {}) {
   await mailPros(st, env, 'pro_booking', list);
 }
 /** Cancela un turno o, con `whole`, toda la reserva. */
-async function cancelBooking(st, env, b, by, { whole = false, reason = '' } = {}) {
+async function cancelBooking(st, env, b, by, { whole = false, reason = '', notify = true, message = '' } = {}) {
   const list = (whole ? groupOf(st, b) : [b]).filter((x) => ACTIVE.includes(x.status));
   if (!list.length) fail(409, 'Ese turno ya no está activo.');
   for (const x of list) {
@@ -613,7 +613,7 @@ async function cancelBooking(st, env, b, by, { whole = false, reason = '' } = {}
     x.history.push({ at: iso(env), text: `Cancelado por ${by}${reason ? `: ${reason}` : ''}` });
   }
   const g = list.length > 1 ? groupView(st, list[0]) : { ...list[0], items: null };
-  await sendEmail(st, env, 'booking_cancelled', g.email, { booking: g }, { booking_id: list[0].id });
+  if (notify && g.email) await sendEmail(st, env, 'booking_cancelled', g.email, { booking: g, message }, { booking_id: list[0].id });
   if (by === 'la clienta') await sendEmail(st, env, 'staff_cancelled', staffTo(st), { booking: g }, { booking_id: list[0].id });
   await mailPros(st, env, 'pro_cancelled', list);
   return list;
@@ -813,7 +813,9 @@ const staffView = (u) => ({ id: u.id, email: u.email, name: u.name, role: u.role
 const PRO_FIELDS = ['phone', 'dni', 'cuit', 'birthday', 'address', 'alias', 'specialty', 'notes'];
 const proView = (st, u) => ({ id: u.id, name: u.name, email: u.email || '', role: u.role, active: u.active !== false, has_access: !!u.password_hash, created_at: u.created_at,
   ...Object.fromEntries(PRO_FIELDS.map((k) => [k, u[k] || ''])), services: u.services || [], pay: { ...payOf(u), label: PAY_TYPES[payOf(u).type] },
-  service_names: (u.services || []).map((id) => st.services.find((s) => s.id === id)?.name).filter(Boolean), color: u.color || '' });
+  service_names: (u.services || []).map((id) => st.services.find((s) => s.id === id)?.name).filter(Boolean), color: u.color || '', keep: proKeep(st, u) });
+/** Lo que impide borrar a una asesora: turnos por venir y turnos realizados (con comisión). */
+const proKeep = (st, p) => ({ active: st.bookings.filter((b) => b.pro_id === p.id && ACTIVE.includes(b.status)).length, done: st.bookings.filter((b) => b.pro_id === p.id && ['completed', 'no_show'].includes(b.status)).length });
 async function proInput(st, env, body, prev = null) {
   const u = prev ? { ...prev } : { role: 'pro', active: true, services: [], pay: { type: 'comision', percent: 40, base: 0 } };
   if (body.name !== undefined) u.name = clean(body.name, 80);
@@ -1171,8 +1173,9 @@ export function niftyBatch(st, env) {
   if (!niftyOn(st) || env.now() < (N.retry_at || 0)) return null;
   const desde = new Date(env.now() - 400 * 864e5).toISOString();
   const list = st.bookings.filter((b) => b.created_at >= desde && b.nifty_sig !== niftySig(b)).slice(0, 100);
-  if (!list.length) return null;
-  return { url: N.url, secret: N.secret, body: JSON.stringify({ turnos: list.map((b) => niftyTurno(st, env, b)) }), sent: list.map((b) => [b.id, niftySig(b)]) };
+  const gone = (N.deleted || []).slice(0, 100); // turnos eliminados del panel: en Nifty quedan como cancelados
+  if (!list.length && !gone.length) return null;
+  return { url: N.url, secret: N.secret, body: JSON.stringify({ turnos: [...list.map((b) => niftyTurno(st, env, b)), ...gone] }), sent: list.map((b) => [b.id, niftySig(b)]), gone: gone.map((t) => t.codigo) };
 }
 /** Anota el resultado de un envío: si salió bien, esos turnos quedan al día; si no, reintenta más tarde (hasta 1 hora). */
 export function niftyDone(st, env, job, res) {
@@ -1180,7 +1183,8 @@ export function niftyDone(st, env, job, res) {
   const N = st.integrations.nifty;
   if (res.ok) {
     for (const [id, sig] of job.sent) { const b = st.bookings.find((x) => x.id === id); if (b) b.nifty_sig = sig; }
-    Object.assign(N, { sent: (N.sent || 0) + job.sent.length, last_ok: iso(env), last_error: '', fails: 0, retry_at: 0 });
+    if (job.gone?.length) N.deleted = (N.deleted || []).filter((t) => !job.gone.includes(t.codigo));
+    Object.assign(N, { sent: (N.sent || 0) + job.sent.length + (job.gone?.length || 0), last_ok: iso(env), last_error: '', fails: 0, retry_at: 0 });
   } else {
     N.fails = (N.fails || 0) + 1;
     Object.assign(N, { last_error: `${new Date(env.now()).toISOString().slice(0, 16).replace('T', ' ')} · ${res.error || 'Nifty no respondió'}`, retry_at: env.now() + Math.min(60, 2 ** Math.min(N.fails, 6)) * 60e3 });
@@ -1190,7 +1194,7 @@ export function niftyDone(st, env, job, res) {
 function niftyView(st, env) {
   const N = st.integrations.nifty, desde = new Date(env.now() - 400 * 864e5).toISOString();
   return { enabled: !!N.enabled, url: N.url, has_secret: !!N.secret, sent: N.sent || 0, last_ok: N.last_ok, last_error: N.last_error,
-    pending: N.enabled ? st.bookings.filter((b) => b.created_at >= desde && b.nifty_sig !== niftySig(b)).length : 0, can_send: !!env.niftySend };
+    pending: N.enabled ? st.bookings.filter((b) => b.created_at >= desde && b.nifty_sig !== niftySig(b)).length + (N.deleted || []).length : 0, can_send: !!env.niftySend };
 }
 async function niftyRoute(st, env, method, A, body, staff) {
   needAdmin(staff);
@@ -1395,6 +1399,19 @@ export async function handle(st, env, req) {
         pros: (s ? prosFor(st, s) : []).concat(b.pro_id && !(s ? prosFor(st, s) : []).some((p) => p.id === b.pro_id) ? st.staff.filter((p) => p.id === b.pro_id) : []).map((p) => ({ id: p.id, name: p.name })),
         audit: st.audit.filter((a) => grp.some((x) => x.id === a.booking_id)).slice(-50).reverse().map(auditView) });
     }
+    // Eliminar un turno para siempre (por ejemplo, los de prueba). Solo administración. No le avisa a la clienta:
+    // para avisarle, primero se cancela. Si ya tiene cobros en la caja, hay que borrarlos antes (así la caja no queda descuadrada).
+    if (method === 'DELETE') {
+      needAdmin(staff);
+      if (cashOf(st).moves.some((m) => m.booking_id === b.id)) fail(409, 'Este turno tiene cobros registrados en la caja: borralos primero desde Caja y facturación.');
+      refundGift(st, b);
+      if (b.transfer_proof && env.deleteImage) await env.deleteImage(b.transfer_proof);
+      // En Nifty el turno ya figuraba: queda como cancelado.
+      if (niftyOn(st) && b.nifty_sig) { const N = st.integrations.nifty; (N.deleted ||= []).push({ ...niftyTurno(st, env, b), estado: 'cancelado' }); }
+      st.bookings.splice(st.bookings.indexOf(b), 1);
+      audit(st, env, staff, `Eliminó el turno ${b.code} (${b.service_name} · ${b.start} · ${b.name} · ${BOOKING_STATUS[b.status]})`);
+      return ok({ ok: true });
+    }
     if (method === 'PATCH') {
       const changes = [];
       if (body.transfer === 'confirm' || body.transfer === 'reject') {
@@ -1427,7 +1444,7 @@ export async function handle(st, env, req) {
       if (body.status && body.status !== b.status) {
         if (!BOOKING_STATUS[body.status]) fail(422, 'Estado inválido.');
         const from = BOOKING_STATUS[b.status];
-        if (body.status === 'cancelled') await cancelBooking(st, env, b, who, { reason: clean(body.reason, 200) });
+        if (body.status === 'cancelled') await cancelBooking(st, env, b, who, { reason: clean(body.reason, 200), notify: body.notify !== false, message: clean(body.message, 400) });
         else { b.history.push({ at: iso(env), text: `${from} → ${BOOKING_STATUS[body.status]} (${who})` }); if (body.status === 'completed') complete(st, b); else b.status = body.status; }
         changes.push(`estado ${from} → ${BOOKING_STATUS[body.status]}`);
       }
@@ -1752,7 +1769,12 @@ export async function handle(st, env, req) {
       return ok({ pro: proView(st, u) });
     }
     if (method === 'DELETE') {
-      if (st.bookings.some((b) => b.pro_id === p.id)) fail(409, 'Tiene turnos registrados: dala de baja en vez de borrarla, así queda su historial.');
+      const keep = proKeep(st, p);
+      if (keep.active) fail(409, `Tiene ${keep.active} turno${keep.active === 1 ? '' : 's'} por venir: reasignalos a otra asesora (o cancelalos) antes de borrarla.`);
+      if (keep.done) fail(409, `Tiene ${keep.done} turno${keep.done === 1 ? '' : 's'} realizado${keep.done === 1 ? '' : 's'} con comisión: dala de baja en vez de borrarla, así queda su historial.`);
+      // Los turnos cancelados o vencidos que tenía quedan sin asesora (con su nombre en el historial).
+      for (const b of st.bookings) if (b.pro_id === p.id) { b.pro_id = null; b.history.push({ at: iso(env), text: `Se borró la asesora ${p.name}` }); }
+      st.blocks = st.blocks.filter((k) => k.pro_id !== p.id);
       st.staff.splice(i, 1);
       audit(st, env, staff, `Borró la asesora ${p.name}`);
       return ok({ ok: true });

@@ -106,7 +106,7 @@ export const TEMPLATES = {
       body: bookingRows(c.booking) + calBox(c.cal), cta: 'Ver mi turno', ctaUrl: c.link, foot: 'Si no podés venir, avisanos así le damos el horario a otra persona.' }) },
   booking_cancelled: { group: 'turnos', label: 'Turno cancelado', to: 'Clienta', when: 'Cuando la clienta cancela desde su link o el equipo lo cancela en el panel.',
     render: (c) => ({ subject: `Tu turno fue cancelado · ${c.booking.service_name}`, title: 'Turno cancelado', intro: `Hola ${esc(first(c.booking.name))}, cancelamos tu turno del ${esc(longDate(c.booking.start))}.${c.booking.deposit_paid ? ' Te escribimos para devolverte la seña o pasarla a otra fecha.' : ''}`,
-      body: '', cta: 'Reservar otro turno', ctaUrl: c.home + '#reservar' }) },
+      body: c.message ? `<p>${esc(c.message)}</p>` : '', cta: 'Reservar otro turno', ctaUrl: c.home + '#reservar' }) },
   booking_thanks: { group: 'turnos', label: 'Gracias por venir', to: 'Clienta', when: 'Al día siguiente de un turno realizado. Invita a dejar una reseña y a volver.',
     render: (c) => ({ subject: '¡Gracias por venir a Casa Samadhi!', title: 'Gracias por regalarte este momento', intro: `Hola ${esc(first(c.booking.name))}, gracias por elegirnos para tu ${esc(c.booking.service_name)}. Nos encantaría saber cómo te sentiste.`,
       body: '', cta: c.reviewUrl ? 'Dejar una reseña' : 'Reservar otra vez', ctaUrl: c.reviewUrl || c.home + '#reservar', cta2: c.reviewUrl ? 'Reservar otra vez' : '', cta2Url: c.home + '#reservar', foot: 'También podés regalarle una gift card a alguien que lo necesite.' }) },
