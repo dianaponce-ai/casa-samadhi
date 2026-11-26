@@ -857,9 +857,10 @@ function bind() {
     const wg = t.closest('[data-wgo]'); if (wg) { wl.i = Number(wg.dataset.wgo); return renderWork(); }
     const wb = t.closest('[data-wbook]'); if (wb) { const id = Number(wb.dataset.wbook); closeWork(); if (SOLO) { bk.info = null; bk.service = SITE.services.find((s) => s.id === id); Object.assign(bk, { pro: null, step: 2, days: [], time: '', date: lockDate(), error: '' }); renderBooking(true); loadDays(); return; } return openBooking({ serviceId: id }); }
     if (t.closest('[data-close]')) return closeAll();
-    if (t.closest('[data-book]')) return openBooking();
+    // Los "Reservar" de la página son links a /turnos (así funcionan aunque no cargue el JavaScript); con la web cargada, se suma el servicio o la sección elegida.
+    if (t.closest('[data-book]')) { if (!SITE) return; e.preventDefault(); return openBooking(); }
     const bs = t.closest('[data-book-svc]'); if (bs) return openBooking({ serviceId: bs.dataset.bookSvc });
-    const bc = t.closest('[data-book-cat]'); if (bc) return openBooking({ category: bc.dataset.bookCat });
+    const bc = t.closest('[data-book-cat]'); if (bc) { if (!SITE) return; e.preventDefault(); return openBooking({ category: bc.dataset.bookCat }); }
     const gs = t.closest('[data-gift-svc]'); if (gs) return openGift(gs.dataset.giftSvc);
     if (t.closest('[data-gift]')) return openGift();
     if (t.closest('[data-legal]')) { if ($('#drawer').classList.contains('on') && (bk.step === 3 || $('#gfForm'))) { readBkForm(); readGfForm(); } return openLegal(); }

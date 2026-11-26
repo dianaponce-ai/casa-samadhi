@@ -699,3 +699,17 @@ test('avisos de turno nuevo: al correo de la casa y a la asesora que lo atiende'
   assert.equal(pro.to, 'trinidad@ejemplo.com');
   assert.match(pro.html, /Tenés un turno nuevo/);
 });
+
+test('la web sin JavaScript (Google, revisión de anuncios): links reales de WhatsApp y de reservar, sin "#"', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { SITE } = await import('../server/core/defaults.js');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.ok(!/href="#"/.test(html), 'no quedan links "#"');
+  const num = '549' + SITE.whatsapp.replace(/\D/g, '').replace(/^0/, '');
+  const was = [...html.matchAll(/href="(https:\/\/wa\.me\/[^"?]+)/g)].map((m) => m[1]);
+  assert.ok(was.length >= 4);
+  assert.ok(was.every((u) => u === 'https://wa.me/' + num), 'el WhatsApp del HTML es el de la casa');
+  assert.ok(html.includes('href="/turnos" data-book>Reservar turno</a>'));
+  assert.ok(html.includes('href="/turnos?seccion=manicuria" data-book-cat="manicuria">Reservar manicuría</a>'));
+  assert.ok(!/<button[^>]*data-book[\s>]/.test(html), 'los Reservar son links, no botones');
+});
