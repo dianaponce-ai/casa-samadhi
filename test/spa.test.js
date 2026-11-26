@@ -677,3 +677,25 @@ test('borrar asesoras: con turnos por venir o realizados no; con solo cancelados
   st.bookings.push({ ...st.bookings[0], id: 999, pro_id: p.id, status: 'completed' });
   await assert.rejects(call(st, env, 'DELETE', `/api/admin/pros/${p.id}`, undefined, admin), (e) => e.status === 409 && /dala de baja/.test(e.message));
 });
+
+test('avisos de turno nuevo: al correo de la casa y a la asesora que lo atiende', async () => {
+  const st = seedState(), env = makeEnv();
+  assert.equal(st.settings.booking.staffEmails, 'casasamadhi.laplata@gmail.com');
+  // En una base ya publicada sin correo del equipo, la migración lo carga (sin pisar uno que ya esté).
+  const { ensure } = await import('../server/core/spa-core.js').then((m) => ({ ensure: m.handle }));
+  const old = seedState(); old.settings.booking.staffEmails = ''; old.meta.migrations = old.meta.migrations.filter((k) => k !== 'avisos-equipo-2026-11');
+  await ensure(old, env, { method: 'GET', path: '/api/site', query: {}, body: {} });
+  assert.equal(old.settings.booking.staffEmails, 'casasamadhi.laplata@gmail.com');
+  const mine = seedState(); mine.settings.booking.staffEmails = 'otro@ejemplo.com'; mine.meta.migrations = mine.meta.migrations.filter((k) => k !== 'avisos-equipo-2026-11');
+  await ensure(mine, env, { method: 'GET', path: '/api/site', query: {}, body: {} });
+  assert.equal(mine.settings.booking.staffEmails, 'otro@ejemplo.com');
+  // Trinidad con correo: al confirmarse la seña le llega su turno; al equipo, "Tenés un turno nuevo".
+  st.staff.find((u) => u.name === 'Trinidad').email = 'trinidad@ejemplo.com';
+  const r = await call(st, env, 'POST', '/api/bookings', { service_id: 1, date: '2026-11-04', time: '10:00', ...who });
+  await call(st, env, 'POST', '/api/pay/simulate', { kind: 'booking', token: r.booking.token, result: 'approved' });
+  const team = env.sent.find((m) => m.template === 'booking_staff'), pro = env.sent.find((m) => m.template === 'pro_booking');
+  assert.equal(team.to, 'casasamadhi.laplata@gmail.com');
+  assert.match(team.subject, /^Tenés un turno nuevo/);
+  assert.equal(pro.to, 'trinidad@ejemplo.com');
+  assert.match(pro.html, /Tenés un turno nuevo/);
+});

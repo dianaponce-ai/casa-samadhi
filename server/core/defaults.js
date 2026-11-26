@@ -101,7 +101,7 @@ export const BOOKING = {
   holdMinutes: 30, // cuánto se guarda el turno mientras se paga la seña
   cancelHours: 24, // hasta cuántas horas antes se puede cancelar online
   reminderHours: 24,
-  staffEmails: '',
+  staffEmails: 'casasamadhi.laplata@gmail.com', // avisos al equipo: turno nuevo, transferencia para verificar, cancelaciones, agenda del día
 };
 
 // Cómo se paga la seña: Mercado Pago y/o transferencia. Los datos bancarios se le muestran a la clienta al reservar.
